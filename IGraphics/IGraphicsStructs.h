@@ -1619,6 +1619,35 @@ struct IRECT
 
     return r;
   }
+
+  	/** Get a new rectangle inside this rectangle using this rectangle as the base coordinate system
+   * @param l Left
+   * @param t Top
+   * @param r Right
+   * @param b Bottom
+   */
+  IRECT GetInside(float l, float t, float r, float b) const
+  {
+    IRECT rect;
+    rect.L = L + l;
+    rect.T = T + t;
+    rect.R = L + r;
+    rect.B = T + b;
+
+    return rect;
+  }
+
+  /** Convenience function to get coordinates inside another RECT using the figma coordinate system*/
+  IRECT GetInsideSize(float l, float t, float w, float h) const
+  {
+    IRECT rect;
+    rect.L = L + l;
+    rect.T = T + t;
+    rect.R = L + l + w;
+    rect.B = T + t + h;
+
+    return rect;
+  }
   
   /** Vertically align this rect to the reference IRECT
    * @param sr the source IRECT to use as reference

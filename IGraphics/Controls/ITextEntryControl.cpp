@@ -513,12 +513,25 @@ void ITextEntryControl::CalcCursorSizes()
 float ITextEntryControl::MeasureCharWidth(char16_t c, char16_t nc)
 {
   IRECT bounds;
-
+  
   if (nc)
   {
     std::string str (StringConvert{}.to_bytes (nc));
     float ncWidth = GetUI()->MeasureText(mText, str.c_str(), bounds);
     str += StringConvert{}.to_bytes (c);
+    
+    //Fix nanovg not measuring spaces properly
+    if(c == 0x20)
+    {
+      float mWidth = GetUI()->MeasureText(mText, str.c_str(), bounds);
+      str += StringConvert{}.to_bytes (c);
+      mSpaceWidth = GetUI()->MeasureText(mText, str.c_str(), bounds) - mWidth;
+    }
+    if(nc == 0x20)
+    {
+      ncWidth += mSpaceWidth;
+    }
+    
     float tcWidth = GetUI()->MeasureText(mText, str.c_str(), bounds);
     return tcWidth - ncWidth;
   }

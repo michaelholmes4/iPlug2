@@ -71,8 +71,9 @@ using namespace igraphics;
 #include "stb_textedit.h"
 
 
-ITextEntryControl::ITextEntryControl()
+ITextEntryControl::ITextEntryControl(float cornerRadius)
 : IControl(IRECT())
+, mCornerRadius(cornerRadius)
 {
   stb_textedit_initialize_state(&mEditState, true);
   
@@ -100,7 +101,7 @@ ITextEntryControl::ITextEntryControl()
 
 void ITextEntryControl::Draw(IGraphics& g)
 {
-  g.FillRect(mText.mTextEntryBGColor, mRECT);
+  g.FillRoundRect(mText.mTextEntryBGColor, mRECT, mCornerRadius);
 
   StbTexteditRow row;
   Layout(&row, this, 0);
@@ -123,8 +124,14 @@ void ITextEntryControl::Draw(IGraphics& g)
     IBlend blend(EBlend::Default, 0.2f);
     g.FillRect(mText.mTextEntryFGColor, selectionRect, &blend);
   }
-
-  g.DrawText(mText, StringConvert{}.to_bytes(mEditString).c_str(), mRECT);
+  
+  if(mIsPassword)
+  {
+    g.DrawText(mText, StringConvert{}.to_bytes(mPasswordString).c_str(), mRECT);
+  } else {
+    g.DrawText(mText, StringConvert{}.to_bytes(mEditString).c_str(), mRECT);
+  }
+  
   
   if (mDrawCursor && !hasSelection)
   {
@@ -382,6 +389,10 @@ void ITextEntryControl::SelectAll()
 int ITextEntryControl::DeleteChars(ITextEntryControl* _this, size_t pos, size_t num)
 {
   _this->mEditString.erase(pos, num);
+  if(_this->mIsPassword)
+  {
+    _this->mPasswordString.erase(pos, num);
+  }
   _this->SetStr(StringConvert{}.to_bytes(_this->mEditString).c_str());
   _this->OnTextChange();
   return true; // TODO: Error checking
@@ -391,6 +402,11 @@ int ITextEntryControl::DeleteChars(ITextEntryControl* _this, size_t pos, size_t 
 int ITextEntryControl::InsertChars(ITextEntryControl* _this, size_t pos, const char16_t* text, size_t num)
 {
   _this->mEditString.insert(pos, text, num);
+  if (_this->mIsPassword)
+  {
+    std::u16string password(text, num, u'●');
+    _this->mPasswordString.insert(pos, password);
+  }
   _this->SetStr(StringConvert{}.to_bytes(_this->mEditString).c_str());
   _this->OnTextChange();
   return true;
@@ -495,7 +511,12 @@ void ITextEntryControl::FillCharWidthCache()
   mCharWidths.Resize(len, false);
   for (int i = 0; i < len; ++i)
   {
-    mCharWidths.Get()[i] = MeasureCharWidth(mEditString[i], i == 0 ? 0 : mEditString[i - 1]);
+    if(mIsPassword)
+    {
+      mCharWidths.Get()[i] = MeasureCharWidth(mPasswordString[i], i == 0 ? 0 : mPasswordString[i - 1]);
+    } else {
+      mCharWidths.Get()[i] = MeasureCharWidth(mEditString[i], i == 0 ? 0 : mEditString[i - 1]);
+    }
   }
 }
 
@@ -540,8 +561,9 @@ float ITextEntryControl::MeasureCharWidth(char16_t c, char16_t nc)
   return GetUI()->MeasureText(mText, str.c_str(), bounds);
 }
 
-void ITextEntryControl::CreateTextEntry(int paramIdx, const IText& text, const IRECT& bounds, int length, const char* str)
+void ITextEntryControl::CreateTextEntry(int paramIdx, const IText& text, const IRECT& bounds, int length, const char* str, bool isPassword)
 {
+  mIsPassword = isPassword;
   SetTargetAndDrawRECTs(bounds);
   SetText(text);
   mText.mFGColor = mText.mTextEntryFGColor;
@@ -573,4 +595,8 @@ void ITextEntryControl::SetStr(const char* str)
 {
   mCharWidths.Resize(0, false);
   mEditString = StringConvert{}.from_bytes(std::string(str));
+  if(mIsPassword)
+  {
+    mPasswordString = std::u16string(strlen(str), u'●').c_str();
+  }
 }

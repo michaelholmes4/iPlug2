@@ -1016,7 +1016,7 @@ public:
    * @param bounds The rectangular region that the text entry will occupy.
    * @param str A CString to specify the default text to display when the text entry box is opened (unless the control specified by the first argument is linked to a parameter)
    * @param valIdx The value index for the control value that the text entry relates to */
-  void CreateTextEntry(IControl& control, const IText& text, const IRECT& bounds, const char* str = "", int valIdx = 0);
+  void CreateTextEntry(IControl& control, const IText& text, const IRECT& bounds, const char* str = "", int valIdx = 0, bool isPassword = false);
 
    /** Called by the platform class after returning from a text entry in order to update a control with a new value. The base class has a record of the control, so it is not needed here.
     * @param str The new value as a CString */
@@ -1289,7 +1289,7 @@ public:
   void RemovePopupMenuControl();
   
   /** Attach a control for text entry, to override platform text entry */
-  void AttachTextEntryControl();
+  void AttachTextEntryControl(float cornerRadius = 0.0);
   
   /** Remove the IGraphics text entry, use platform text entry if available */
   void RemoveTextEntryControl();

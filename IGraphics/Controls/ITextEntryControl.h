@@ -38,7 +38,7 @@ BEGIN_IGRAPHICS_NAMESPACE
 class ITextEntryControl : public IControl
 {
 public:
-  ITextEntryControl();
+  ITextEntryControl(float cornerRadius = 0.0);
   
   //IControl
   void Draw(IGraphics& g) override;
@@ -60,7 +60,7 @@ public:
   void DismissEdit();
   void CommitEdit();
 
-  void CreateTextEntry(int paramIdx, const IText& text, const IRECT& bounds, int length, const char* str);
+  void CreateTextEntry(int paramIdx, const IText& text, const IRECT& bounds, int length, const char* str, bool isPassword = false);
 
 private:
     
@@ -88,7 +88,10 @@ private:
   STB_TexteditState mEditState;
   WDL_TypedBuf<float> mCharWidths;
   std::u16string mEditString;
+  std::u16string mPasswordString;
   float mSpaceWidth;
+  float mCornerRadius;
+  bool mIsPassword;
 };
 
 END_IGRAPHICS_NAMESPACE

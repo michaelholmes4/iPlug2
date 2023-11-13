@@ -359,11 +359,11 @@ void IGraphics::RemovePopupMenuControl()
   mPopupControl = nullptr;
 }
 
-void IGraphics::AttachTextEntryControl()
+void IGraphics::AttachTextEntryControl(float cornerRadius)
 {
   if (!mTextEntryControl)
   {
-    mTextEntryControl = std::make_unique<ITextEntryControl>();
+    mTextEntryControl = std::make_unique<ITextEntryControl>(cornerRadius);
     mTextEntryControl->SetDelegate(*GetDelegate());
   }
 }
@@ -1862,7 +1862,7 @@ void IGraphics::StyleAllVectorControls(const IVStyle& style)
   }
 }
 
-void IGraphics::CreateTextEntry(IControl& control, const IText& text, const IRECT& bounds, const char* str, int valIdx)
+void IGraphics::CreateTextEntry(IControl& control, const IText& text, const IRECT& bounds, const char* str, int valIdx, bool isPassword)
 {
   mInTextEntry = &control;
   mTextEntryValIdx = valIdx;
@@ -1870,7 +1870,7 @@ void IGraphics::CreateTextEntry(IControl& control, const IText& text, const IREC
   int paramIdx = valIdx > kNoValIdx  ? control.GetParamIdx(valIdx) : kNoParameter;
 
   if (mTextEntryControl)
-    mTextEntryControl->CreateTextEntry(paramIdx, text, bounds, control.GetTextEntryLength(), str);
+    mTextEntryControl->CreateTextEntry(paramIdx, text, bounds, control.GetTextEntryLength(), str, isPassword);
   else
     CreatePlatformTextEntry(paramIdx, text, bounds, control.GetTextEntryLength(), str);
   

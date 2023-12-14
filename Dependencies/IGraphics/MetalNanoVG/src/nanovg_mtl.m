@@ -587,7 +587,9 @@ void mnvgReadPixels(NVGcontext* ctx, int image, int x, int y, int width,
   for (MNVGbuffers* buffers in mtl.cbuffers) {
     if (buffers->isBusy && buffers->image == image && buffers->commandBuffer) {
       id<MTLCommandBuffer> commandBuffer = buffers->commandBuffer;
-      [commandBuffer waitUntilCompleted];
+      if (commandBuffer.status != MTLCommandBufferStatusError) {
+        [commandBuffer waitUntilCompleted];
+      }
       break;
     }
   }

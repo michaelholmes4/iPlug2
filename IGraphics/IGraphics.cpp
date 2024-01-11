@@ -885,7 +885,7 @@ void IGraphics::DrawControl(IControl* pControl, const IRECT& bounds, float scale
     PrepareRegion(clipBounds);
     pControl->Draw(*this);
 #ifdef AAX_API
-    pControl->DrawPTHighlight(*this);
+    //pControl->DrawPTHighlight(*this);
 #endif
 
 #ifndef NDEBUG

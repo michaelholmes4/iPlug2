@@ -404,7 +404,7 @@ int ITextEntryControl::InsertChars(ITextEntryControl* _this, size_t pos, const c
   _this->mEditString.insert(pos, text, num);
   if (_this->mIsPassword)
   {
-    std::u16string password(text, num, u'●');
+    std::u16string password(num, u'\u25CF'); // Unicode for '●'
     _this->mPasswordString.insert(pos, password);
   }
   _this->SetStr(StringConvert{}.to_bytes(_this->mEditString).c_str());
@@ -597,6 +597,6 @@ void ITextEntryControl::SetStr(const char* str)
   mEditString = StringConvert{}.from_bytes(std::string(str));
   if(mIsPassword)
   {
-    mPasswordString = std::u16string(strlen(str), u'●').c_str();
+    mPasswordString = std::u16string(strlen(str), u'\u25CF').c_str();
   }
 }

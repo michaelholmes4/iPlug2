@@ -20,7 +20,8 @@ def main():
     print("Usage: get_archive_name.py projectpath platform[win/mac] demo[demo/full]")
     sys.exit(1)
   else:
-    return print(get_archive_name(sys.argv[1], sys.argv[2], sys.argv[3]))
+    print(get_archive_name(sys.argv[1], sys.argv[2], sys.argv[3]))
+    
 
 if __name__ == '__main__':
   main()

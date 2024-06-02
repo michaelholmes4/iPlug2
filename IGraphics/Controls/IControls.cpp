@@ -677,11 +677,11 @@ void IVKnobControl::OnMouseDown(float x, float y, const IMouseMod& mod)
 
 void IVKnobControl::OnMouseDblClick(float x, float y, const IMouseMod& mod)
 {
-  #ifdef AAX_API
-  PromptUserInput(mValueBounds);
-  #else
+  //#ifdef AAX_API
+  //PromptUserInput(mValueBounds);
+  //#else
   SetValueToDefault(GetValIdxForPos(x, y));
-  #endif
+  //#endif
 }
 
 void IVKnobControl::OnMouseUp(float x, float y, const IMouseMod& mod)

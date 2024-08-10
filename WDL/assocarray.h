@@ -34,6 +34,8 @@ public:
     DeleteAll();
   }
 
+  void Prealloc(int sz) { m_data.Prealloc(sz*sizeof(KeyVal)); }
+
   VAL* GetPtr(KEY key, KEY *keyPtrOut=NULL) const
   {
     bool ismatch = false;
@@ -66,11 +68,14 @@ public:
     }
     else
     {
-      KeyVal* kv = m_data.Resize(m_data.GetSize()+1)+i;
-      memmove(kv+1, kv, (m_data.GetSize()-i-1)*(unsigned int)sizeof(KeyVal));
-      if (m_keydup) key = m_keydup(key);
-      kv->key = key;
-      kv->val = val;      
+      KeyVal *kv = m_data.ResizeOK(m_data.GetSize()+1);
+      if (WDL_NORMALLY(kv != NULL))
+      {
+        memmove(kv+i+1, kv+i, (m_data.GetSize()-i-1)*sizeof(KeyVal));
+        if (m_keydup) key = m_keydup(key);
+        kv[i].key = key;
+        kv[i].val = val;
+      }
     }
     return i;
   }
@@ -172,10 +177,13 @@ public:
   void AddUnsorted(KEY key, VAL val)
   {
     int i=m_data.GetSize();
-    KeyVal* kv = m_data.Resize(i+1)+i;
-    if (m_keydup) key = m_keydup(key);
-    kv->key = key;
-    kv->val = val;
+    KeyVal *kv = m_data.ResizeOK(i+1);
+    if (WDL_NORMALLY(kv != NULL))
+    {
+      if (m_keydup) key = m_keydup(key);
+      kv[i].key = key;
+      kv[i].val = val;
+    }
   }
 
   void Resort(int (*new_keycmp)(KEY *k1, KEY *k2)=NULL)
@@ -284,6 +292,10 @@ public:
   WDL_TypedBuf<KeyVal> m_data;
 
   static int keycmp_ptr(KEY *a, KEY *b) { return (INT_PTR)*a > (INT_PTR)*b ? 1 : (INT_PTR)*a < (INT_PTR)*b ? -1 : 0; }
+
+  // for (const auto &a : list) { a.key, a.val }
+  const KeyVal *begin() const { return m_data.begin(); }
+  const KeyVal *end() const { return m_data.end(); }
 
 protected:
 
@@ -419,9 +431,16 @@ public:
   
   ~WDL_LogicalSortStringKeyedArray() { }
 
-  static int cmpstr(const char **a, const char **b) { return WDL_strcmp_logical(*a, *b, 1); }
-  static int cmpistr(const char **a, const char **b) { return WDL_strcmp_logical(*a, *b, 0); }
-
+  static int cmpstr(const char **a, const char **b)
+  {
+    int r=WDL_strcmp_logical_ex(*a, *b, 1, WDL_STRCMP_LOGICAL_EX_FLAG_UTF8CONVERT);
+    return r?r:strcmp(*a,*b);
+  }
+  static int cmpistr(const char **a, const char **b)
+  {
+    int r=WDL_strcmp_logical_ex(*a, *b, 0, WDL_STRCMP_LOGICAL_EX_FLAG_UTF8CONVERT);
+    return r?r:stricmp(*a,*b);
+  }
 };
 
 

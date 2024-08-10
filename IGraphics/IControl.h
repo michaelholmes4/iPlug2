@@ -175,6 +175,11 @@ public:
    * @param valIdx An index that indicates which of the control's vals the menu relates to */
   virtual void OnPopupMenuSelection(IPopupMenu* pSelectedMenu, int valIdx);
 
+  /** Implement this method to handle popup menu deletion interactions (on IOS) after IGraphics::CreatePopupMenu/IControl::PromptUserInput
+     * @param pMenu The menu in which an item was deleted
+     * @param itemIdx An index that indicates which of the items was deleted */
+  virtual void OnDeleteFromPopupMenu(IPopupMenu* pMenu, int itemIdx) {}
+    
   /** Implement this method to handle text input after IGraphics::CreateTextEntry/IControl::PromptUserInput
    * @param str A CString with the inputted text
    * @param valIdx An index that indicates which of the control's values the text completion relates to */
@@ -211,8 +216,9 @@ public:
   inline IControl* SetAnimationEndActionFunction(IActionFunction actionFunc) { mAnimationEndActionFunc = actionFunc; return this; }
   
   /** Set a tooltip for the control
-   * @param str CString tooltip to be displayed */
-  inline void SetTooltip(const char* str) { mTooltip.Set(str); }
+   * @param str CString tooltip to be displayed
+   * @return Ptr to this control, for chaining */
+  inline IControl* SetTooltip(const char* str) { mTooltip.Set(str); return this; }
   
   /** @return Currently set tooltip text */
   inline const char* GetTooltip() const { return mTooltip.Get(); }
@@ -379,7 +385,7 @@ public:
   
   /** Specify whether the control should respond to mouse events
    * @param ignore \c true if it should ignore mouse events */
-  void SetIgnoreMouse(bool ignore) { mIgnoreMouse = ignore; }
+  virtual void SetIgnoreMouse(bool ignore) { mIgnoreMouse = ignore; }
   
   /** @return \c true if the control should show parameter labels/units e.g. "Hz" in text entry prompts */
   bool GetPromptShowsParamLabel() const { return mPromptShowsParamLabel; }
@@ -436,8 +442,8 @@ public:
    * @param func the function to trigger */
   IControl* AttachGestureRecognizer(EGestureType type, IGestureFunc func);
   
-  /** @return /c true if this control supports multiple gestures */
-  bool GetWantsGestures() const { return mGestureFuncs.size() > 0 && !mAnimationFunc; }
+  /** @return /c true if this control supports gestures (override if you are not calling IControl::AttachGestureRecognizer but are overriding OnGesture()) */
+  virtual bool GetWantsGestures() const { return mGestureFuncs.size() > 0 && !mAnimationFunc; }
   
   /** @return the last recognized gesture */
   EGestureType GetLastGesture() const { return mLastGesture; }
@@ -1661,7 +1667,7 @@ public:
 protected:
   virtual void DrawBackground(IGraphics& g, const IRECT& r) override
   {
-    g.FillRect(kBG, r, &mBlend);
+    g.FillRect(GetColor(kBG), r, &mBlend);
 
     if(mBaseValue > 0.)
     {
@@ -2200,6 +2206,23 @@ public:
   }
 };
 
+/** A basic control to display some text  that needs to span multiple lines */
+class IMultiLineTextControl : public ITextControl
+{
+public:
+  IMultiLineTextControl(const IRECT& bounds, const char* str, const IText& text = DEFAULT_TEXT, const IColor& BGColor = DEFAULT_BGCOLOR)
+  : ITextControl(bounds, str, text, BGColor)
+  {
+  }
+  
+  void Draw(IGraphics& g) override
+  {
+    g.FillRect(mBGColor, mRECT, &mBlend);
+    g.DrawMultiLineText(mText, mStr.Get(), mRECT, &mBlend);
+  }
+};
+
+
 /** A control to show a clickable URL, that changes color after clicking */
 class IURLControl : public ITextControl
 {
@@ -2258,7 +2281,7 @@ protected:
   bool mShowParamLabel;
   IColor mTriangleColor = COLOR_BLACK;
   IColor mTriangleMouseOverColor = COLOR_WHITE;
-  IRECT mTri;
+  IRECT mTriangleRect;
 };
 
 /** A control to use as a placeholder during development */

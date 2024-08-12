@@ -2789,6 +2789,36 @@ void IGraphics::DrawFittedBitmap(const IBitmap& bitmap, const IRECT& bounds, con
   PathTransformRestore();
 }
 
+void IGraphics::DrawFittedBitmap(const IBitmap& bitmap, const IRECT& bounds, int bmpState, const IBlend* pBlend)
+{
+  int srcX = 0;
+  int srcY = 0;
+
+  bmpState = Clip(bmpState, 1, bitmap.N());
+  float w = bitmap.W();
+  float h = bitmap.H();
+  if (bitmap.N() > 1 && bmpState > 0)
+  {
+    if (bitmap.GetFramesAreHorizontal())
+    {
+      srcX = bitmap.W() * (bmpState - 1) / bitmap.N();
+      w = bitmap.W() / bitmap.N();
+    }
+    else
+    {
+      srcY = bitmap.H() * (bmpState - 1) / bitmap.N();
+      h = bitmap.H() / bitmap.N();
+    }
+  }
+  
+  PathTransformSave();
+  PathTransformTranslate(bounds.L, bounds.T);
+  IRECT newBounds(0., 0., w, h);
+  PathTransformScale(bounds.W() / w, bounds.H() / h);
+  DrawBitmap(bitmap, newBounds, srcX, srcY, pBlend);
+  PathTransformRestore();
+}
+
 void IGraphics::DrawSVG(const ISVG& svg, const IRECT& dest, const IBlend* pBlend, const IColor* pStrokeColor, const IColor* pFillColor)
 {
   float xScale = dest.W() / svg.W();

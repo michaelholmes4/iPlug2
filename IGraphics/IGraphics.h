@@ -130,6 +130,8 @@ public:
    * @param bounds The rectangular region to draw the image in
    * @param pBlend Optional blend method */
   virtual void DrawFittedBitmap(const IBitmap& bitmap, const IRECT& bounds, const IBlend* pBlend = 0);
+  virtual void DrawFittedBitmap(const IBitmap& bitmap, const IRECT& bounds, int bmpState, const IBlend* pBlend = 0);
+  
   
   /** Draw a bitmap (raster) image to the graphics context with rotation
    * @param bitmap The bitmap image to draw to the graphics context

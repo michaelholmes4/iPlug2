@@ -197,6 +197,10 @@ struct ISVG
     mImage = pImage;
   }
   
+  ISVG()
+  {
+  }
+  
   /** @return The width of the SVG */
   float W() const
   {

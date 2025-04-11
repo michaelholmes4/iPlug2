@@ -850,7 +850,7 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink, const CVTimeSt
 {
   int flag = 0;
   int code = MacKeyEventToVK(pEvent, flag);
-  NSString *s = [pEvent charactersIgnoringModifiers];
+  NSString *s = [pEvent characters];
 
   unichar c = 0;
   

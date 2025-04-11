@@ -95,7 +95,7 @@ static int MacKeyEventToVK(NSEvent* pEvent, int& flag)
   {
     NSString *str = NULL;
     
-    if (!str || ![str length]) str = [pEvent charactersIgnoringModifiers];
+    if (!str || ![str length]) str = [pEvent characters];
     
     if (!str || ![str length])
     {
@@ -881,7 +881,7 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink, const CVTimeSt
 {
   int flag = 0;
   int code = MacKeyEventToVK(pEvent, flag);
-  NSString *s = [pEvent charactersIgnoringModifiers];
+  NSString *s = [pEvent characters];
   
   unichar c = 0;
   

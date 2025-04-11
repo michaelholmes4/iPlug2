@@ -95,7 +95,7 @@ static int MacKeyEventToVK(NSEvent* pEvent, int& flag)
   {
     NSString *str = NULL;
     
-    if (!str || ![str length]) str = [pEvent characters];
+    if (!str || ![str length]) str = [pEvent charactersIgnoringModifiers];
     
     if (!str || ![str length])
     {

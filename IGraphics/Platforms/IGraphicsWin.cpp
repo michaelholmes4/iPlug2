@@ -1226,9 +1226,8 @@ void* IGraphicsWin::OpenWindow(void* pParent)
   UpdateTooltips();
 
 #ifdef IGRAPHICS_GL
-    wglMakeCurrent(NULL, NULL);
+  wglMakeCurrent(NULL, NULL);
 #endif
-  }
 
   GetDelegate()->OnUIOpen();
   

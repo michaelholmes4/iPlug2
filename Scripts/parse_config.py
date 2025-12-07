@@ -24,7 +24,8 @@ StringElements = {
 "AAX_PLUG_NAME_STR",
 "AAX_PLUG_CATEGORY_STR",
 "VST3_SUBCATEGORY",
-"SHARED_RESOURCES_SUBPATH"
+"SHARED_RESOURCES_SUBPATH",
+"PLUG_VERSION_STR"
 }
 
 IntElements = {
@@ -91,7 +92,13 @@ def parse_config(projectpath):
   MINOR_INT = config["PLUG_VERSION_INT"] & 0x0000FF00
   config["MINOR_STR"] = str(MINOR_INT >> 8)
   config["BUGFIX_STR"] = str(config["PLUG_VERSION_INT"] & 0x000000FF)
-  config["FULL_VER_STR"] = config["MAJOR_STR"] + "." + config["MINOR_STR"] + "." + config["BUGFIX_STR"]
+
+  # Use PLUG_VERSION_STR if defined (supports pre-release versions like 1.1.0-rc.1)
+  # Otherwise fall back to constructed version from hex
+  if "PLUG_VERSION_STR" in config and config["PLUG_VERSION_STR"]:
+    config["FULL_VER_STR"] = config["PLUG_VERSION_STR"]
+  else:
+    config["FULL_VER_STR"] = config["MAJOR_STR"] + "." + config["MINOR_STR"] + "." + config["BUGFIX_STR"]
 
   fileinput.close()
 

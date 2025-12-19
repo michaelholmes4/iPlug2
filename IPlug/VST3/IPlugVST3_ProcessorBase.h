@@ -187,16 +187,23 @@ public:
   void ProcessParameterChanges(Steinberg::Vst::ProcessData& data, IPlugQueue<IMidiMsg>& fromProcessor);
   void ProcessAudio(Steinberg::Vst::ProcessData& data, Steinberg::Vst::ProcessSetup& setup, const Steinberg::Vst::BusList& ins, const Steinberg::Vst::BusList& outs);
   void Process(Steinberg::Vst::ProcessData& data, Steinberg::Vst::ProcessSetup& setup, const Steinberg::Vst::BusList& ins, const Steinberg::Vst::BusList& outs, IPlugQueue<IMidiMsg>& fromEditor, IPlugQueue<IMidiMsg>& fromProcessor, IPlugQueue<SysExData>& sysExFromEditor, SysExData& sysExBuf);
-  
+
+  // Gain Reduction Reporting
+  void SetGainReductionValueDB(double grDB); // Store GR value to be sent to host
+
   // IPlugProcessor overrides
   bool SendMidiMsg(const IMidiMsg& msg) override;
 
 private:
+  void SendGainReductionToHost(Steinberg::Vst::ProcessData& data); // Internal: send stored GR to host
+
   int mMaxNChansForMainInputBus = 0;
   IPlugAPIBase& mPlug;
   Steinberg::Vst::ProcessContext mProcessContext;
   IMidiQueue mMidiOutputQueue;
   bool mSidechainActive = false;
+  double mGainReductionDB = 0.0; // Current gain reduction value to report
+  double mPreviousGRValue = 0.0; // Track previous GR value to avoid redundant updates
 };
 
 END_IPLUG_NAMESPACE

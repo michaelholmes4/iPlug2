@@ -108,8 +108,42 @@ public:
     appendString(STR16("off"));
     appendString(STR16("on"));
   }
-  
+
   OBJ_METHODS(IPlugVST3BypassParameter, StringListParameter)
+};
+
+/** VST3 gain reduction parameter helper - read-only parameter for reporting GR to host */
+class IPlugVST3GainReductionParameter : public Steinberg::Vst::Parameter
+{
+public:
+  IPlugVST3GainReductionParameter()
+  : Steinberg::Vst::Parameter(STR16("Gain Reduction"), kGainReductionParam, STR16("dB"), 0, 0, Steinberg::Vst::ParameterInfo::kIsReadOnly)
+  {
+    precision = 2;
+  }
+
+  void toString(Steinberg::Vst::ParamValue valueNormalized, Steinberg::Vst::String128 string) const override
+  {
+    // Convert normalized value (0.0 to 1.0) to dB (0 to -60 dB)
+    double grDB = valueNormalized * -60.0;
+    char text[32];
+    snprintf(text, 32, "%.2f", grDB);
+    Steinberg::UString(string, 128).fromAscii(text);
+  }
+
+  Steinberg::Vst::ParamValue toPlain(Steinberg::Vst::ParamValue valueNormalized) const override
+  {
+    // Convert normalized (0.0-1.0) to dB (0 to -60)
+    return valueNormalized * -60.0;
+  }
+
+  Steinberg::Vst::ParamValue toNormalized(Steinberg::Vst::ParamValue plainValue) const override
+  {
+    // Convert dB (0 to -60) to normalized (0.0-1.0)
+    return plainValue / -60.0;
+  }
+
+  OBJ_METHODS(IPlugVST3GainReductionParameter, Parameter)
 };
 
 END_IPLUG_NAMESPACE

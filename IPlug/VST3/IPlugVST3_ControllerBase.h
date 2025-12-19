@@ -80,7 +80,12 @@ public:
     
     if (!plugIsInstrument)
       mParameters.addParameter(mBypassParameter = new IPlugVST3BypassParameter());
-    
+
+#ifdef PLUG_REPORTS_GAIN_REDUCTION
+    // Add read-only gain reduction parameter for dynamics plugins (enabled via config.h)
+    mParameters.addParameter(new IPlugVST3GainReductionParameter());
+#endif
+
     pEditController->addUnit(new Steinberg::Vst::Unit(unitInfo));
 
     for (int i = 0; i < pPlug->NParams(); i++)

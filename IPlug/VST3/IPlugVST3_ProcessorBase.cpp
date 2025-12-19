@@ -1,13 +1,14 @@
 /*
  ==============================================================================
- 
+
  This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
- 
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
  */
 
+#include <cmath>
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 #include "pluginterfaces/vst/vstspeaker.h"
 #include "pluginterfaces/vst/ivstmidicontrollers.h"
@@ -423,17 +424,50 @@ void IPlugVST3ProcessorBase::Process(ProcessData& data, ProcessSetup& setup, con
 {
   PrepareProcessContext(data, setup);
   ProcessParameterChanges(data, fromProcessor);
-  
+
   if (DoesMIDIIn())
   {
     ProcessMidiIn(data.inputEvents, fromEditor, fromProcessor);
   }
-  
+
   ProcessAudio(data, setup, ins, outs);
-  
+
   if (DoesMIDIOut())
   {
     ProcessMidiOut(sysExFromEditor, sysExBuf, data.outputEvents, data.numSamples);
+  }
+
+  // Send gain reduction value to host if it was set during ProcessBlock
+  SendGainReductionToHost(data);
+}
+
+void IPlugVST3ProcessorBase::SetGainReductionValueDB(double grDB)
+{
+  mGainReductionDB = grDB;
+}
+
+void IPlugVST3ProcessorBase::SendGainReductionToHost(ProcessData& data)
+{
+  // Only send updates if the value changed significantly (avoid spamming host)
+  const double threshold = 0.1; // 0.1 dB threshold
+  if (std::abs(mGainReductionDB - mPreviousGRValue) < threshold)
+    return;
+
+  IParameterChanges* outParamChanges = data.outputParameterChanges;
+  if (outParamChanges)
+  {
+    // Convert dB to normalized value (0.0 to 1.0)
+    // GR is typically 0 to -60 dB
+    double normalizedValue = std::max(0.0, std::min(1.0, mGainReductionDB / -60.0));
+
+    int32 index = 0;
+    IParamValueQueue* paramQueue = outParamChanges->addParameterData(kGainReductionParam, index);
+    if (paramQueue)
+    {
+      int32 index2 = 0;
+      paramQueue->addPoint(0, normalizedValue, index2);
+      mPreviousGRValue = mGainReductionDB;
+    }
   }
 }
 

@@ -53,10 +53,12 @@ enum EVST3ParamIDs
 #ifdef IPLUG1_COMPATIBILITY
   kBypassParam = 'bpas',
   kPresetParam = 'prst',
+  kGainReductionParam = 'grpr',
   kMIDICCParamStartIdx
 #else
   kBypassParam = 65536,
   kPresetParam, // not used unless baked in presets declared
+  kGainReductionParam, // read-only parameter for gain reduction reporting
   kMIDICCParamStartIdx
 #endif
 };

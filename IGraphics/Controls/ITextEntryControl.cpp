@@ -101,6 +101,9 @@ ITextEntryControl::ITextEntryControl(float cornerRadius)
 
 void ITextEntryControl::Draw(IGraphics& g)
 {
+  if (!mEditing)
+    return;
+
   g.FillRoundRect(mText.mTextEntryBGColor, mRECT, mCornerRadius);
 
   StbTexteditRow row;

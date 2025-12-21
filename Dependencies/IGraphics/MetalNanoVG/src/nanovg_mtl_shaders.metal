@@ -88,6 +88,31 @@ vertex RasterizerData vertexShader(Vertex vert [[stage_in]],
   return out;
 }
 
+// High quality 
+float my_noise(float2 uv_coord)
+{
+  float noise = fract(sin(dot(uv_coord, float2(12.9898, 78.233))) * 43758.5453);
+  return (1.0 / 255.0) * noise - (0.5 / 255.0);
+}
+
+float fastsin(float x)
+{
+  float norm = fract(x * 1.0 / 3.14159);
+  norm = x > 0 ? norm : 1.0 - norm;
+  float y = -norm * abs(norm) + norm;
+  return 4 * y;
+}
+float my_noise_optimised(float2 uv_coord)
+{
+  //float v = dot(uv_coord, float2(12.9898, 78.233)); // noise
+  //float y = -v * abs(v) + v; // sine like
+  //float noise = fract(y * 43758.5453); // more noise
+  //return (1.0 / 255.0) * noise - (0.5 / 255.0);
+
+  float noise = fract(fastsin(dot(uv_coord, float2(12.9898, 78.233))) * 43758.5453);
+  return (1.0 / 255.0) * noise - (0.5 / 255.0);
+}
+
 // Fragment function (No AA)
 fragment float4 fragmentShader(RasterizerData in [[stage_in]],
                                constant Uniforms& uniforms [[buffer(0)]],
@@ -102,6 +127,8 @@ fragment float4 fragmentShader(RasterizerData in [[stage_in]],
     float d = saturate((uniforms.feather * 0.5 + sdroundrect(uniforms, pt))
                        / uniforms.feather);
     float4 color = mix(uniforms.innerCol, uniforms.outerCol, d);
+    float noise = my_noise_optimised(in.fpos);
+    color.rgb += noise;
     return color * scissor;
   } else if (uniforms.type == 1) {  // MNVG_SHADER_FILLIMG
     float2 pt = (uniforms.paintMat * float3(in.fpos, 1.0)).xy / uniforms.extent;
@@ -154,6 +181,8 @@ fragment float4 fragmentShaderAA(RasterizerData in [[stage_in]],
     float4 color = mix(uniforms.innerCol, uniforms.outerCol, d);
     color *= scissor;
     color *= strokeAlpha;
+    float noise = my_noise_optimised(in.fpos);
+    color.rgb += noise;
     return color;
   } else {  // MNVG_SHADER_FILLIMG
     float2 pt = (uniforms.paintMat * float3(in.fpos, 1.0)).xy / uniforms.extent;

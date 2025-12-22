@@ -588,8 +588,8 @@ void mnvgReadPixels(NVGcontext* ctx, int image, int x, int y, int width,
 
   // Makes sure the command execution for the image has been done.
   for (MNVGbuffers* buffers in mtl.cbuffers) {
-    if (buffers->isBusy && buffers->image == image && buffers->commandBuffer) {
-      id<MTLCommandBuffer> commandBuffer = buffers->commandBuffer;
+    if (buffers.isBusy && buffers.image == image && buffers.commandBuffer) {
+      id<MTLCommandBuffer> commandBuffer = buffers.commandBuffer;
       if (commandBuffer.status != MTLCommandBufferStatusError) {
         [commandBuffer waitUntilCompleted];
       }
@@ -629,7 +629,7 @@ void mnvgReadPixels(NVGcontext* ctx, int image, int x, int y, int width,
 #endif  // TARGET_OS_SIMULATOR
 }
 
-enum MNVGTarget mnvgTarget() {
+enum MNVGTarget mnvgTarget(void) {
 #if TARGET_OS_SIMULATOR
   return MNVG_SIMULATOR;
 #elif TARGET_OS_IOS

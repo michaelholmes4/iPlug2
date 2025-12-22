@@ -88,11 +88,8 @@
     
     EXPORT int main(int hostCallback)
     {
-    #if defined OS_MAC
-      return (VstIntPtr) VSTPluginMain((audioMasterCallback)hostCallback);
-    #else
-      return (int) VSTPluginMain((audioMasterCallback)hostCallback);
-    #endif
+      audioMasterCallback callback = reinterpret_cast<audioMasterCallback>(static_cast<VstIntPtr>(hostCallback));
+      return static_cast<int>(reinterpret_cast<std::uintptr_t>(VSTPluginMain(callback)));
     }
   };
 #pragma mark - VST3 (All)
@@ -348,10 +345,10 @@ static const clap_plugin* clap_create_plugin(const clap_plugin_factory_t *factor
 {
   if (!strcmp(gPluginDesc->id, plugin_id))
   {
-    IPlugCLAP* pPlug = MakePlug(InstanceInfo{gPluginDesc.get(), host});
+    iplug::IPlugCLAP* pPlug = iplug::MakePlug(iplug::InstanceInfo{gPluginDesc.get(), host});
     return pPlug->clapPlugin();
   }
-  
+
   return nullptr;
 }
 

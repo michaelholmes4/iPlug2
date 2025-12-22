@@ -83,6 +83,9 @@
     <ClCompile Include="..\..\..\IPlug\Extras\OSC\IPlugOSC.cpp">
       <Filter>IPlug\Extras\OSC</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\IPlug\Extras\OSC\IPlugOSC_internal.cpp">
+      <Filter>IPlug\Extras\OSC</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\..\WDL\jnetlib\asyncdns.cpp">
       <Filter>WDL\jnetlib</Filter>
     </ClCompile>
@@ -96,6 +99,9 @@
       <Filter>WDL\jnetlib</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\IPlug\Extras\WebView\IPlugWebView.cpp">
+      <Filter>IPlug\Extras\WebView</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\IPlug\Extras\WebView\IPlugWebView_win.cpp">
       <Filter>IPlug\Extras\WebView</Filter>
     </ClCompile>
   </ItemGroup>
@@ -279,6 +285,9 @@
     <ClInclude Include="..\..\..\IPlug\Extras\OSC\IPlugOSC.h">
       <Filter>IPlug\Extras\OSC</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\IPlug\Extras\OSC\IPlugOSC_internal.h">
+      <Filter>IPlug\Extras\OSC</Filter>
+    </ClInclude>
     <ClInclude Include="..\..\..\IPlug\Extras\OSC\IPlugOSC_msg.h">
       <Filter>IPlug\Extras\OSC</Filter>
     </ClInclude>
@@ -306,6 +315,7 @@
     <ClInclude Include="..\..\..\IPlug\Extras\WebView\IPlugWebView.h">
       <Filter>IPlug\Extras\WebView</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\IPlug\ISender.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="resources">
@@ -372,10 +382,14 @@
     <None Include="..\config\IPlugOSCEditor-win.props">
       <Filter>config</Filter>
     </None>
+    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="..\resources\IPlugOSCEditor.ico">
       <Filter>resources</Filter>
     </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <Natvis Include="$(MSBuildThisFileDirectory)..\..\natvis\wil.natvis" />
   </ItemGroup>
 </Project>

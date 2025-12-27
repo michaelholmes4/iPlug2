@@ -44,6 +44,8 @@
 #  include "mnvg_bitcode/macos.h"
 #elif TARGET_OS_TV
 #  include "mnvg_bitcode/tvos.h"
+#elif TARGET_OS_VISION
+#  include "mnvg_bitcode/xros.h"
 #else
 #  define MNVG_INVALID_TARGET
 #endif
@@ -118,32 +120,33 @@ typedef struct MNVGfragUniforms MNVGfragUniforms;
 }
 @end
 
-@interface MNVGbuffers : NSObject {
- @public
-  id<MTLCommandBuffer> commandBuffer;
-  BOOL isBusy;
-  int image;
-  id<MTLBuffer> viewSizeBuffer;
-  id<MTLTexture> stencilTexture;
-  MNVGcall* calls;
-  int ccalls;
-  int ncalls;
-  id<MTLBuffer> indexBuffer;
-  uint32_t* indexes;
-  int cindexes;
-  int nindexes;
-  id<MTLBuffer> vertBuffer;
-  struct NVGvertex* verts;
-  int cverts;
-  int nverts;
-  id<MTLBuffer> uniformBuffer;
-  unsigned char* uniforms;
-  int cuniforms;
-  int nuniforms;
-}
+@interface MNVGbuffers : NSObject
+
+@property (nonatomic, strong) id<MTLCommandBuffer> commandBuffer;
+@property (nonatomic, assign) BOOL isBusy;
+@property (nonatomic, assign) int image;
+@property (nonatomic, strong) id<MTLBuffer> viewSizeBuffer;
+@property (nonatomic, strong) id<MTLTexture> stencilTexture;
+@property (nonatomic, assign) MNVGcall* calls;
+@property (nonatomic, assign) int ccalls;
+@property (nonatomic, assign) int ncalls;
+@property (nonatomic, strong) id<MTLBuffer> indexBuffer;
+@property (nonatomic, assign) uint32_t* indexes;
+@property (nonatomic, assign) int cindexes;
+@property (nonatomic, assign) int nindexes;
+@property (nonatomic, strong) id<MTLBuffer> vertBuffer;
+@property (nonatomic, assign) struct NVGvertex* verts;
+@property (nonatomic, assign) int cverts;
+@property (nonatomic, assign) int nverts;
+@property (nonatomic, strong) id<MTLBuffer> uniformBuffer;
+@property (nonatomic, assign) unsigned char* uniforms;
+@property (nonatomic, assign) int cuniforms;
+@property (nonatomic, assign) int nuniforms;
+
 @end
 
 @interface MNVGcontext : NSObject
+
 @property (nonatomic, strong) id<MTLCommandQueue> commandQueue;
 @property (nonatomic, strong) CAMetalLayer* metalLayer;
 @property (nonatomic, strong) id <MTLRenderCommandEncoder> renderEncoder;
@@ -560,8 +563,8 @@ void* mnvgImageHandle(NVGcontext* ctx, int image) {
 
   // Makes sure the command execution for the image has been done.
   for (MNVGbuffers* buffers in mtl.cbuffers) {
-    if (buffers->isBusy && buffers->image == image && buffers->commandBuffer) {
-      id<MTLCommandBuffer> commandBuffer = buffers->commandBuffer;
+    if (buffers.isBusy && buffers.image == image && buffers.commandBuffer) {
+      id<MTLCommandBuffer> commandBuffer = buffers.commandBuffer;
       [commandBuffer waitUntilCompleted];
       break;
     }
@@ -585,8 +588,8 @@ void mnvgReadPixels(NVGcontext* ctx, int image, int x, int y, int width,
 
   // Makes sure the command execution for the image has been done.
   for (MNVGbuffers* buffers in mtl.cbuffers) {
-    if (buffers->isBusy && buffers->image == image && buffers->commandBuffer) {
-      id<MTLCommandBuffer> commandBuffer = buffers->commandBuffer;
+    if (buffers.isBusy && buffers.image == image && buffers.commandBuffer) {
+      id<MTLCommandBuffer> commandBuffer = buffers.commandBuffer;
       if (commandBuffer.status != MTLCommandBufferStatusError) {
         [commandBuffer waitUntilCompleted];
       }
@@ -635,6 +638,8 @@ enum MNVGTarget mnvgTarget(void) {
   return MNVG_MACOS;
 #elif TARGET_OS_TV
   return MNVG_TVOS;
+#elif TARGET_OS_VISION
+  return MNVG_VISIONOS;
 #else
   return MNVG_UNKNOWN;
 #endif
@@ -647,59 +652,59 @@ enum MNVGTarget mnvgTarget(void) {
 
 - (MNVGcall*)allocCall {
   MNVGcall* ret = NULL;
-  if (_buffers->ncalls + 1 > _buffers->ccalls) {
+  if (_buffers.ncalls + 1 > _buffers.ccalls) {
     MNVGcall* calls;
-    int ccalls = mtlnvg__maxi(_buffers->ncalls + 1, 128) + _buffers->ccalls / 2;
-    calls = (MNVGcall*)realloc(_buffers->calls, sizeof(MNVGcall) * ccalls);
+    int ccalls = mtlnvg__maxi(_buffers.ncalls + 1, 128) + _buffers.ccalls / 2;
+    calls = (MNVGcall*)realloc(_buffers.calls, sizeof(MNVGcall) * ccalls);
     if (calls == NULL) return NULL;
-    _buffers->calls = calls;
-    _buffers->ccalls = ccalls;
+    _buffers.calls = calls;
+    _buffers.ccalls = ccalls;
   }
-  ret = &_buffers->calls[_buffers->ncalls++];
+  ret = &_buffers.calls[_buffers.ncalls++];
   memset(ret, 0, sizeof(MNVGcall));
   return ret;
 }
 
 - (int)allocFragUniforms:(int)n {
   int ret = 0;
-  if (_buffers->nuniforms + n > _buffers->cuniforms) {
-    int cuniforms = mtlnvg__maxi(_buffers->nuniforms + n, 128) \
-                    + _buffers->cuniforms / 2;
+  if (_buffers.nuniforms + n > _buffers.cuniforms) {
+    int cuniforms = mtlnvg__maxi(_buffers.nuniforms + n, 128) \
+                    + _buffers.cuniforms / 2;
     id<MTLBuffer> buffer = [_metalLayer.device
         newBufferWithLength:(_fragSize * cuniforms)
         options:kMetalBufferOptions];
     unsigned char* uniforms = [buffer contents];
-    if (_buffers->uniformBuffer != nil) {
-      memcpy(uniforms, _buffers->uniforms,
-             _fragSize * _buffers->nuniforms);
+    if (_buffers.uniformBuffer != nil) {
+      memcpy(uniforms, _buffers.uniforms,
+             _fragSize * _buffers.nuniforms);
     }
-    _buffers->uniformBuffer = buffer;
-    _buffers->uniforms = uniforms;
-    _buffers->cuniforms = cuniforms;
+    _buffers.uniformBuffer = buffer;
+    _buffers.uniforms = uniforms;
+    _buffers.cuniforms = cuniforms;
   }
-  ret = _buffers->nuniforms * _fragSize;
-  _buffers->nuniforms += n;
+  ret = _buffers.nuniforms * _fragSize;
+  _buffers.nuniforms += n;
   return ret;
 }
 
 - (int)allocIndexes:(int)n {
   int ret = 0;
-  if (_buffers->nindexes + n > _buffers->cindexes) {
-    int cindexes = mtlnvg__maxi(_buffers->nindexes + n, 4096) \
-                   + _buffers->cindexes / 2;
+  if (_buffers.nindexes + n > _buffers.cindexes) {
+    int cindexes = mtlnvg__maxi(_buffers.nindexes + n, 4096) \
+                   + _buffers.cindexes / 2;
     id<MTLBuffer> buffer = [_metalLayer.device
         newBufferWithLength:(_indexSize * cindexes)
         options:kMetalBufferOptions];
     uint32_t* indexes = [buffer contents];
-    if (_buffers->indexBuffer != nil) {
-      memcpy(indexes, _buffers->indexes, _indexSize * _buffers->nindexes);
+    if (_buffers.indexBuffer != nil) {
+      memcpy(indexes, _buffers.indexes, _indexSize * _buffers.nindexes);
     }
-    _buffers->indexBuffer = buffer;
-    _buffers->indexes = indexes;
-    _buffers->cindexes = cindexes;
+    _buffers.indexBuffer = buffer;
+    _buffers.indexes = indexes;
+    _buffers.cindexes = cindexes;
   }
-  ret = _buffers->nindexes;
-  _buffers->nindexes += n;
+  ret = _buffers.nindexes;
+  _buffers.nindexes += n;
   return ret;
 }
 
@@ -722,22 +727,21 @@ enum MNVGTarget mnvgTarget(void) {
 
 - (int)allocVerts:(int)n {
   int ret = 0;
-  if (_buffers->nverts + n > _buffers->cverts) {
-    int cverts = mtlnvg__maxi(_buffers->nverts + n, 4096)
-                 + _buffers->cverts / 2;
+  if (_buffers.nverts + n > _buffers.cverts) {
+    int cverts = mtlnvg__maxi(_buffers.nverts + n, 4096) + _buffers.cverts / 2;
     id<MTLBuffer> buffer = [_metalLayer.device
         newBufferWithLength:(sizeof(NVGvertex) * cverts)
         options:kMetalBufferOptions];
     NVGvertex* verts = [buffer contents];
-    if (_buffers->vertBuffer != nil) {
-      memcpy(verts, _buffers->verts, sizeof(NVGvertex) * _buffers->nverts);
+    if (_buffers.vertBuffer != nil) {
+      memcpy(verts, _buffers.verts, sizeof(NVGvertex) * _buffers.nverts);
     }
-    _buffers->vertBuffer = buffer;
-    _buffers->verts = verts;
-    _buffers->cverts = cverts;
+    _buffers.vertBuffer = buffer;
+    _buffers.verts = verts;
+    _buffers.cverts = cverts;
   }
-  ret = _buffers->nverts;
-  _buffers->nverts += n;
+  ret = _buffers.nverts;
+  _buffers.nverts += n;
   return ret;
 }
 
@@ -839,7 +843,7 @@ enum MNVGTarget mnvgTarget(void) {
     [_renderEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
                                indexCount:call->indexCount
                                 indexType:MTLIndexTypeUInt32
-                              indexBuffer:_buffers->indexBuffer
+                              indexBuffer:_buffers.indexBuffer
                         indexBufferOffset:kIndexBufferOffset];
   }
 
@@ -861,7 +865,7 @@ enum MNVGTarget mnvgTarget(void) {
     [_renderEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
                                indexCount:call->indexCount
                                 indexType:MTLIndexTypeUInt32
-                              indexBuffer:_buffers->indexBuffer
+                              indexBuffer:_buffers.indexBuffer
                         indexBufferOffset:kIndexBufferOffset];
   }
 
@@ -895,16 +899,16 @@ enum MNVGTarget mnvgTarget(void) {
 }
 
 - (MNVGfragUniforms*)fragUniformAtIndex:(int)index {
-  return (MNVGfragUniforms*)&_buffers->uniforms[index];
+  return (MNVGfragUniforms*)&_buffers.uniforms[index];
 }
 
 - (void)renderCancel {
-  _buffers->image = 0;
-  _buffers->isBusy = NO;
-  _buffers->nindexes = 0;
-  _buffers->nverts = 0;
-  _buffers->ncalls = 0;
-  _buffers->nuniforms = 0;
+  _buffers.image = 0;
+  _buffers.isBusy = NO;
+  _buffers.nindexes = 0;
+  _buffers.nverts = 0;
+  _buffers.ncalls = 0;
+  _buffers.nuniforms = 0;
   dispatch_semaphore_signal(_semaphore);
 }
 
@@ -926,9 +930,9 @@ enum MNVGTarget mnvgTarget(void) {
   descriptor.stencilAttachment.clearStencil = 0;
   descriptor.stencilAttachment.loadAction = MTLLoadActionClear;
   descriptor.stencilAttachment.storeAction = MTLStoreActionDontCare;
-  descriptor.stencilAttachment.texture = _buffers->stencilTexture;
+  descriptor.stencilAttachment.texture = _buffers.stencilTexture;
 
-  id<MTLCommandBuffer> commandBuffer = _buffers->commandBuffer;
+  id<MTLCommandBuffer> commandBuffer = _buffers.commandBuffer;
   id<MTLRenderCommandEncoder> encoder = [commandBuffer
       renderCommandEncoderWithDescriptor:descriptor];
 
@@ -938,15 +942,15 @@ enum MNVGTarget mnvgTarget(void) {
   [encoder setViewport:(MTLViewport)
       {0.0, 0.0, _viewPortSize.x, _viewPortSize.y, 0.0, 1.0}];
 
-  [encoder setVertexBuffer:_buffers->vertBuffer
+  [encoder setVertexBuffer:_buffers.vertBuffer
                     offset:0
                    atIndex:MNVG_VERTEX_INPUT_INDEX_VERTICES];
 
-  [encoder setVertexBuffer:_buffers->viewSizeBuffer
+  [encoder setVertexBuffer:_buffers.viewSizeBuffer
                    offset:0
                   atIndex:MNVG_VERTEX_INPUT_INDEX_VIEW_SIZE];
 
-  [encoder setFragmentBuffer:_buffers->uniformBuffer offset:0 atIndex:0];
+  [encoder setFragmentBuffer:_buffers.uniformBuffer offset:0 atIndex:0];
   return encoder;
 }
 
@@ -992,6 +996,9 @@ enum MNVGTarget mnvgTarget(void) {
 #elif TARGET_OS_TV
   metal_library_bitcode = mnvg_bitcode_tvos;
   metal_library_bitcode_len = mnvg_bitcode_tvos_len;
+#elif TARGET_OS_VISION
+  metal_library_bitcode = mnvg_bitcode_xros;
+  metal_library_bitcode_len = mnvg_bitcode_xros_len;
 #endif
 
   dispatch_data_t data = dispatch_data_create(metal_library_bitcode,
@@ -1267,13 +1274,13 @@ enum MNVGTarget mnvgTarget(void) {
 
 - (void)renderDelete {
   for (MNVGbuffers* buffers in _cbuffers) {
-    buffers->commandBuffer = nil;
-    buffers->viewSizeBuffer = nil;
-    buffers->stencilTexture = nil;
-    buffers->indexBuffer = nil;
-    buffers->vertBuffer = nil;
-    buffers->uniformBuffer = nil;
-    free(buffers->calls);
+    buffers.commandBuffer = nil;
+    buffers.viewSizeBuffer = nil;
+    buffers.stencilTexture = nil;
+    buffers.indexBuffer = nil;
+    buffers.vertBuffer = nil;
+    buffers.uniformBuffer = nil;
+    free(buffers.calls);
   }
 
   for (MNVGtexture* texture in _textures) {
@@ -1352,17 +1359,17 @@ enum MNVGTarget mnvgTarget(void) {
   if (indexOffset == -1) goto error;
   call->indexOffset = indexOffset;
   call->indexCount = indexCount;
-  uint32_t* index = &_buffers->indexes[indexOffset];
+  uint32_t* index = &_buffers.indexes[indexOffset];
 
   int strokeVertOffset = vertOffset + (maxverts - strokeCount);
   call->strokeOffset = strokeVertOffset + 1;
   call->strokeCount = strokeCount - 2;
-  NVGvertex* strokeVert = _buffers->verts + strokeVertOffset;
+  NVGvertex* strokeVert = _buffers.verts + strokeVertOffset;
 
   NVGpath* path = (NVGpath*)&paths[0];
   for (int i = npaths; i--; ++path) {
     if (path->nfill > 2) {
-      memcpy(&_buffers->verts[vertOffset], path->fill,
+      memcpy(&_buffers.verts[vertOffset], path->fill,
              sizeof(NVGvertex) * path->nfill);
 
       int hubVertOffset = vertOffset++;
@@ -1387,7 +1394,7 @@ enum MNVGTarget mnvgTarget(void) {
   if (call->type == MNVG_FILL) {
     // Quad
     call->triangleOffset = vertOffset;
-    quad = &_buffers->verts[call->triangleOffset];
+    quad = &_buffers.verts[call->triangleOffset];
     mtlnvg__vset(&quad[0], bounds[2], bounds[3], 0.5f, 1.0f);
     mtlnvg__vset(&quad[1], bounds[2], bounds[1], 0.5f, 1.0f);
     mtlnvg__vset(&quad[2], bounds[0], bounds[3], 0.5f, 1.0f);
@@ -1408,7 +1415,7 @@ enum MNVGTarget mnvgTarget(void) {
 error:
   // We get here if call alloc was ok, but something else is not.
   // Roll back the last call to prevent drawing it.
-  if (_buffers->ncalls > 0) _buffers->ncalls--;
+  if (_buffers.ncalls > 0) _buffers.ncalls--;
 }
 
 - (void)renderFlush {
@@ -1422,17 +1429,17 @@ error:
   id<MTLTexture> colorTexture = nil;;
   vector_uint2 textureSize;
 
-  _buffers->commandBuffer = commandBuffer;
+  _buffers.commandBuffer = commandBuffer;
   __block MNVGbuffers* buffers = _buffers;
   [commandBuffer enqueue];
   [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
-      buffers->isBusy = NO;
-      buffers->commandBuffer = nil;
-      buffers->image = 0;
-      buffers->nindexes = 0;
-      buffers->nverts = 0;
-      buffers->ncalls = 0;
-      buffers->nuniforms = 0;
+      buffers.isBusy = NO;
+      buffers.commandBuffer = nil;
+      buffers.image = 0;
+      buffers.nindexes = 0;
+      buffers.nverts = 0;
+      buffers.ncalls = 0;
+      buffers.nuniforms = 0;
       dispatch_semaphore_signal(self.semaphore);
   }];
 
@@ -1440,7 +1447,7 @@ error:
       nvgInternalParams(s_framebuffer->ctx)->userPtr != (__bridge void*)self) {
     textureSize = _viewPortSize;
   } else {  // renders in framebuffer
-    buffers->image = s_framebuffer->image;
+    buffers.image = s_framebuffer->image;
     MNVGtexture* tex = [self findTexture:s_framebuffer->image];
     colorTexture = tex->tex;
     textureSize = (vector_uint2){(uint)colorTexture.width,
@@ -1458,8 +1465,8 @@ error:
   if (_renderEncoder == nil) {
     return;
   }
-  MNVGcall* call = &buffers->calls[0];
-  for (int i = buffers->ncalls; i--; ++call) {
+  MNVGcall* call = &buffers.calls[0];
+  for (int i = buffers.ncalls; i--; ++call) {
     MNVGblend* blend = &call->blendFunc;
     [self updateRenderPipelineStatesForBlend:blend
                                  pixelFormat:colorTexture.pixelFormat];
@@ -1478,23 +1485,23 @@ error:
   _renderEncoder = nil;
 
   if (drawable && !_metalLayer.presentsWithTransaction) {
-    [_buffers->commandBuffer presentDrawable:drawable];
+    [_buffers.commandBuffer presentDrawable:drawable];
   }
 
 #if TARGET_OS_OSX
   // Makes mnvgReadPixels() work as expected on Mac.
   if (s_framebuffer != NULL) {
-    id<MTLBlitCommandEncoder> blitCommandEncoder = [_buffers->commandBuffer
+    id<MTLBlitCommandEncoder> blitCommandEncoder = [_buffers.commandBuffer
         blitCommandEncoder];
     [blitCommandEncoder synchronizeResource:colorTexture];
     [blitCommandEncoder endEncoding];
   }
 #endif  // TARGET_OS_OSX
 
-  [_buffers->commandBuffer commit];
+  [_buffers.commandBuffer commit];
 
   if (drawable && _metalLayer.presentsWithTransaction) {
-    [_buffers->commandBuffer waitUntilScheduled];
+    [_buffers.commandBuffer waitUntilScheduled];
     [drawable present];
   }
 }
@@ -1532,7 +1539,7 @@ error:
 
   call->strokeOffset = offset + 1;
   call->strokeCount = strokeCount - 2;
-  NVGvertex* strokeVert = _buffers->verts + offset;
+  NVGvertex* strokeVert = _buffers.verts + offset;
 
   NVGpath* path = (NVGpath*)&paths[0];
   for (int i = npaths; i--; ++path) {
@@ -1581,7 +1588,7 @@ error:
 error:
   // We get here if call alloc was ok, but something else is not.
   // Roll back the last call to prevent drawing it.
-  if (_buffers->ncalls > 0) _buffers->ncalls--;
+  if (_buffers.ncalls > 0) _buffers.ncalls--;
 }
 
 - (void)renderTrianglesWithPaint:(NVGpaint*) paint
@@ -1604,7 +1611,7 @@ error:
   if (call->triangleOffset == -1) goto error;
   call->triangleCount = nverts;
 
-  memcpy(&_buffers->verts[call->triangleOffset], verts,
+  memcpy(&_buffers.verts[call->triangleOffset], verts,
          sizeof(NVGvertex) * nverts);
 
   // Fill shader
@@ -1624,7 +1631,7 @@ error:
 error:
   // We get here if call alloc was ok, but something else is not.
   // Roll back the last call to prevent drawing it.
-  if (_buffers->ncalls > 0) _buffers->ncalls--;
+  if (_buffers.ncalls > 0) _buffers.ncalls--;
 }
 
 - (int)renderUpdateTextureWithImage:(int)image
@@ -1689,20 +1696,20 @@ error:
 
   dispatch_semaphore_wait(_semaphore, DISPATCH_TIME_FOREVER);
   for (MNVGbuffers* buffers in _cbuffers) {
-    if (!buffers->isBusy) {
-      buffers->isBusy = YES;
+    if (!buffers.isBusy) {
+      buffers.isBusy = YES;
       _buffers = buffers;
       break;
     }
   }
 
   // Initializes view size buffer for vertex function.
-  if (_buffers->viewSizeBuffer == nil) {
-    _buffers->viewSizeBuffer = [_metalLayer.device
+  if (_buffers.viewSizeBuffer == nil) {
+    _buffers.viewSizeBuffer = [_metalLayer.device
         newBufferWithLength:sizeof(vector_float2)
         options:kMetalBufferOptions];
   }
-  float* viewSize = (float*)[_buffers->viewSizeBuffer contents];
+  float* viewSize = (float*)[_buffers.viewSizeBuffer contents];
   viewSize[0] = width;
   viewSize[1] = height;
 }
@@ -1818,12 +1825,12 @@ error:
 
 // Re-creates stencil texture whenever the specified size is bigger.
 - (void)updateStencilTextureToSize:(vector_uint2*)size {
-  if (_buffers->stencilTexture != nil &&
-      (_buffers->stencilTexture.width < size->x ||
-       _buffers->stencilTexture.height < size->y)) {
-    _buffers->stencilTexture = nil;
+  if (_buffers.stencilTexture != nil &&
+      (_buffers.stencilTexture.width < size->x ||
+       _buffers.stencilTexture.height < size->y)) {
+    _buffers.stencilTexture = nil;
   }
-  if (_buffers->stencilTexture == nil) {
+  if (_buffers.stencilTexture == nil) {
     MTLTextureDescriptor* stencilTextureDescriptor = [MTLTextureDescriptor
         texture2DDescriptorWithPixelFormat:kStencilFormat
         width:size->x
@@ -1833,7 +1840,7 @@ error:
 #if TARGET_OS_OSX || TARGET_OS_SIMULATOR || TARGET_OS_MACCATALYST
     stencilTextureDescriptor.storageMode = MTLStorageModePrivate;
 #endif  // TARGET_OS_OSX || TARGET_OS_SIMULATOR || TARGET_OS_MACCATALYST
-    _buffers->stencilTexture = [_metalLayer.device
+    _buffers.stencilTexture = [_metalLayer.device
         newTextureWithDescriptor:stencilTextureDescriptor];
   }
 }

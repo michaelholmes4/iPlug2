@@ -39,7 +39,7 @@ extern bool WDL_STYLE_GetBackgroundGradient(double *gradstart, double *gradslope
 
 // for slider
 extern LICE_IBitmap *WDL_STYLE_GetSliderBitmap2(bool vert);
-extern bool WDL_STYLE_AllowSliderMouseWheel();
+extern int WDL_STYLE_AllowSliderMouseWheel(WDL_VWnd *, double *scale); // returns 1 to allow, -1 to eat
 extern int WDL_STYLE_GetSliderDynamicCenterPos();
 
 
@@ -54,7 +54,7 @@ int WDL_STYLE_WantGlobalButtonBorders() { return 0; }
 bool WDL_STYLE_WantGlobalButtonBackground(int *col) { return false; }
 bool WDL_STYLE_GetBackgroundGradient(double *gradstart, double *gradslope) { return false; }
 LICE_IBitmap *WDL_STYLE_GetSliderBitmap2(bool vert) { return NULL; }
-bool WDL_STYLE_AllowSliderMouseWheel() { return true; }
+int WDL_STYLE_AllowSliderMouseWheel(WDL_VWnd *vw, double *scale) { if (GetAsyncKeyState(VK_CONTROL)&0x8000) *scale /= 16.0; return 1; }
 int WDL_STYLE_GetSliderDynamicCenterPos() { return 500; }
 
 */
@@ -114,7 +114,7 @@ class WDL_VirtualIconButton : public WDL_VWnd
     bool GetForceText() { return m_forcetext; }
     void SetTextLabelAlign(char align) { m_textalign=align; }
 
-    void SetFont(LICE_IFont *font, LICE_IFont *vfont=NULL) { m_textfont=font; m_textfontv=vfont; }
+    virtual void SetFont(LICE_IFont *font, LICE_IFont *vfont=NULL) { m_textfont=font; m_textfontv=vfont; }
     LICE_IFont *GetFont(bool vfont=false) { return vfont?m_textfontv:m_textfont; }
 
   protected:

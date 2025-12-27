@@ -474,7 +474,8 @@ static int DelegateMouseMove(NSView *view, NSEvent *theEvent)
     for (NSInteger x = kw ? -1 : 0; x < cnt; x ++)
     {
       NSWindow *wnd = x < 0 ? kw : [windows objectAtIndex:x];
-      if (wnd && [wnd isVisible])
+      if (wnd && [wnd isVisible] && HTTRANSPARENT != SendMessage((HWND)wnd, WM_NCHITTEST, 0,
+            MAKELPARAM((int)floor(screen_p.x+0.5), (int)floor(screen_p.y+0.5))))
       {
         NSRect fr=[wnd frame];
         if (screen_p.x >= fr.origin.x && screen_p.x < fr.origin.x + fr.size.width &&
@@ -918,7 +919,7 @@ static id<MTLDevice> mtl_def_device()
       }
       else
       {
-        NMLISTVIEW nmhdr={{(HWND)sender,(UINT_PTR)[sender tag],LVN_ITEMCHANGED},(int)[sender selectedRow],0};
+        NMLISTVIEW nmhdr={{(HWND)sender,(UINT_PTR)[sender tag],LVN_ITEMCHANGED},(int)[sender selectedRow],0,LVIS_SELECTED,0};
         if (m_wndproc&&!m_hashaddestroy) m_wndproc((HWND)self,WM_NOTIFY,(int)[sender tag],(LPARAM)&nmhdr);
       }
       swell_ignore_listview_changes--;

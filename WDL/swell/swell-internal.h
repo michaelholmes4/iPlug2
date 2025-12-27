@@ -174,6 +174,7 @@ typedef struct WindowPropRec
   bool m_last_dark_mode;
   bool m_ctlcolor_set;
   bool m_disable_menu;
+  bool m_need_alphachg;
   LONG_PTR m_userdata;
 }
 - (id) init;
@@ -903,7 +904,6 @@ struct HWND__
 
   int m_refcnt; 
   int m_oswindow_private; // private state for generic-gtk or whatever
-  RECT m_oswindow_lastcfgpos; // gdk will check for duplicate configure events and ignore
 
   HMENU m_menu;
   HFONT m_font;

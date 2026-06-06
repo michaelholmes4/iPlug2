@@ -200,6 +200,7 @@ void IGraphics::RemoveAllControls()
   mTextEntryControl = nullptr;
   mCornerResizer = nullptr;
   mPerfDisplay = nullptr;
+  mInPopupMenu = nullptr;
     
 #ifndef NDEBUG
   mLiveEdit = nullptr;

@@ -559,6 +559,7 @@ public:
   {
     mWindowType = windowType;
     CalculateWindow();
+    CalculateScalingFactors();
   }
   
   void SetOutputType(EOutputType outputType)
@@ -683,14 +684,11 @@ private:
 
   void CalculateScalingFactors()
   {
-    const float M = static_cast<float>(mFFTSize - 1);
-
     auto scaling = 0.0f;
 
     for (auto i = 0; i < mFFTSize; i++)
     {
-      auto v = 0.5f * (1.0f - std::cos(2.0f * PI * i / M));
-      scaling += v;
+      scaling += mWindow[i];
     }
 
     mScalingFactor = scaling * scaling;
@@ -718,7 +716,11 @@ private:
         int sortIdx = WDL_fft_permute(mFFTSize, i);
         auto re = mSTFTFrames[frameIdx].bins[ch][sortIdx].re;
         auto im = mSTFTFrames[frameIdx].bins[ch][sortIdx].im;
-        mSTFTOutput[ch][i] = std::sqrt(2.0f * (re * re + im * im) / mScalingFactor);
+        // The single-sided spectrum doubling (folding negative frequencies
+        // back in) only applies to bins 1..N/2-1 - the DC bin (i == 0) has
+        // no negative-frequency counterpart and shouldn't be doubled.
+        const float foldFactor = (i == 0) ? 1.0f : 2.0f;
+        mSTFTOutput[ch][i] = std::sqrt(foldFactor * (re * re + im * im) / mScalingFactor);
         mSTFTOutput[ch][i + nBins] = std::atan2(im, re);
       }
     }

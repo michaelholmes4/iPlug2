@@ -408,6 +408,40 @@ void IGraphicsNanoVG::GetLayerBitmapData(const ILayerPtr& layer, RawBitmapData& 
   }
 }
 
+APIBitmap* IGraphicsNanoVG::SnapshotCanvas(const IRECT& bounds)
+{
+  const float scale = GetBackingPixelScale();
+  const int x = static_cast<int>(std::round(bounds.L * scale));
+  const int y = static_cast<int>(std::round(bounds.T * scale));
+  const int w = std::max(1, static_cast<int>(std::round(bounds.W() * scale)));
+  const int h = std::max(1, static_cast<int>(std::round(bounds.H() * scale)));
+
+  RawBitmapData data;
+  data.Resize(w * h * 4);
+
+  const bool wasInDraw = mInDraw;
+  if (wasInDraw)
+    nvgEndFrame(mVG); // flush controls drawn so far into mMainFrameBuffer
+
+#if defined(IGRAPHICS_GL)
+  // GL FBO storage is bottom-up, so convert the top-left-origin rect to GL's bottom-left origin.
+  nvgBindFramebuffer(mMainFrameBuffer);
+  const int fboHeight = static_cast<int>(std::round(WindowHeight() * GetScreenScale()));
+  nvgReadPixels(mVG, mMainFrameBuffer->image, x, fboHeight - y - h, w, h, data.Get());
+#else
+  nvgReadPixels(mVG, mMainFrameBuffer->image, x, y, w, h, data.Get());
+#endif
+
+  if (wasInDraw)
+  {
+    nvgBindFramebuffer(mMainFrameBuffer); // resume main frame buffer update
+    nvgBeginFrame(mVG, WindowWidth(), WindowHeight(), GetScreenScale());
+  }
+
+  // Wrap the captured pixels in a plain (non-FBO) image, same as the raw mask bitmap in ApplyShadowMask().
+  return new Bitmap(mVG, w, h, data.Get(), GetScreenScale(), GetDrawScale());
+}
+
 void IGraphicsNanoVG::ApplyShadowMask(ILayerPtr& layer, RawBitmapData& mask, const IShadow& shadow)
 {
   const APIBitmap* pBitmap = layer->GetAPIBitmap();

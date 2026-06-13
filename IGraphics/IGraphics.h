@@ -559,7 +559,7 @@ public:
   void DrawRotatedLayer(const ILayerPtr& layer, double angle);
     
   /** Applies a drop shadow directly onto a layer
-  * @param layer - the layer to add the shadow to 
+  * @param layer - the layer to add the shadow to
   * @param shadow - the shadow to add */
   virtual void ApplyLayerDropShadow(ILayerPtr& layer, const IShadow& shadow);
 
@@ -568,8 +568,22 @@ public:
    * @param layer The layer to get the data from
    * @param data The pixel data extracted from the layer */
   virtual void GetLayerBitmapData(const ILayerPtr& layer, RawBitmapData& data) = 0;
-  
+
+  /** Captures the contents of the canvas already drawn within bounds this frame, blurs it, and draws it back -
+   * producing a "frosted glass" backdrop blur effect. NOTE: must be called before drawing anything else
+   * within bounds, since it captures whatever has been drawn so far this frame.
+   * @param bounds The region to capture and blur, in graphics context coordinates
+   * @param blurSize The approximate blur radius in points
+   * @param pBlend Optional blend method for compositing the blurred result */
+  void DrawBackdropBlur(const IRECT& bounds, float blurSize, const IBlend* pBlend = nullptr);
+
 protected:
+  /** Implemented by a graphics backend to capture the canvas contents within bounds, already drawn this frame,
+   * into a new offscreen bitmap, without re-rendering. Used by DrawBackdropBlur().
+   * @param bounds The region to capture, in graphics context coordinates
+   * @return A new APIBitmap containing the captured pixels, owned by the caller */
+  virtual APIBitmap* SnapshotCanvas(const IRECT& bounds) = 0;
+
   /** Implemented by a graphics backend to apply a calculated shadow mask to a layer, according to the shadow settings specified
    * @param layer The layer to apply the shadow to
    * @param mask The mask of the shadow as raw bitmap data

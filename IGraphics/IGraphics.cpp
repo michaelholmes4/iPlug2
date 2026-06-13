@@ -2194,6 +2194,34 @@ void IGraphics::ApplyLayerDropShadow(ILayerPtr& layer, const IShadow& shadow)
   ApplyShadowMask(layer, temp1, shadow);
 }
 
+void IGraphics::DrawBackdropBlur(const IRECT& bounds, float blurSize, const IBlend* pBlend)
+{
+  const IRECT r = bounds.GetPixelAligned(GetBackingPixelScale());
+
+  ILayerPtr layer(new ILayer(SnapshotCanvas(r), r, nullptr, IRECT()));
+
+  if (!layer->GetAPIBitmap())
+    return;
+
+  // Progressively downsample the capture, halving its size each pass. Each pass draws the
+  // previous layer into a smaller one via DrawFittedLayer, so bilinear minification blurs it.
+  const int iterations = Clip(static_cast<int>(std::round(std::log2(std::max(2.f, blurSize * 0.5f)))), 1, 5);
+
+  IRECT srcRect = r;
+
+  for (int i = 0; i < iterations; i++)
+  {
+    const IRECT dstRect(0.f, 0.f, std::max(1.f, srcRect.W() * 0.5f), std::max(1.f, srcRect.H() * 0.5f));
+    StartLayer(nullptr, dstRect);
+    DrawFittedLayer(layer, dstRect, nullptr);
+    layer = EndLayer();
+    srcRect = dstRect;
+  }
+
+  // Upsample the final (small, blurred) layer back to the original bounds - magnification adds further smoothing.
+  DrawFittedLayer(layer, bounds, pBlend);
+}
+
 bool IGraphics::LoadFont(const char* fontID, const char* fileNameOrResID)
 {
   PlatformFontPtr font = LoadPlatformFont(fontID, fileNameOrResID);

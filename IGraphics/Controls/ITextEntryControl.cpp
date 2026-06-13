@@ -71,9 +71,10 @@ using namespace igraphics;
 #include "stb_textedit.h"
 
 
-ITextEntryControl::ITextEntryControl(float cornerRadius)
+ITextEntryControl::ITextEntryControl(float cornerRadius, float padding)
 : IControl(IRECT())
 , mCornerRadius(cornerRadius)
+, mPadding(padding)
 {
   stb_textedit_initialize_state(&mEditState, true);
   
@@ -130,9 +131,9 @@ void ITextEntryControl::Draw(IGraphics& g)
   
   if(mIsPassword)
   {
-    g.DrawText(mText, StringConvert{}.to_bytes(mPasswordString).c_str(), mRECT);
+    g.DrawText(mText, StringConvert{}.to_bytes(mPasswordString).c_str(), GetPaddedRECT());
   } else {
-    g.DrawText(mText, StringConvert{}.to_bytes(mEditString).c_str(), mRECT);
+    g.DrawText(mText, StringConvert{}.to_bytes(mEditString).c_str(), GetPaddedRECT());
   }
   
   
@@ -447,19 +448,19 @@ void ITextEntryControl::Layout(StbTexteditRow* row, ITextEntryControl* _this, in
   {
     case EAlign::Near:
     {
-      row->x0 = _this->GetRECT().L;
+      row->x0 = _this->GetPaddedRECT().L;
       row->x1 = row->x0 + textWidth;
       break;
     }
     case EAlign::Center:
     {
-      row->x0 = _this->GetRECT().MW() - (textWidth * 0.5f);
+      row->x0 = _this->GetPaddedRECT().MW() - (textWidth * 0.5f);
       row->x1 = row->x0 + textWidth;
       break;
     }
     case EAlign::Far:
     {
-      row->x0 = _this->GetRECT().R - textWidth;
+      row->x0 = _this->GetPaddedRECT().R - textWidth;
       row->x1 = row->x0 + textWidth;
     }
   }
@@ -473,12 +474,12 @@ void ITextEntryControl::Layout(StbTexteditRow* row, ITextEntryControl* _this, in
     }
     case EVAlign::Middle:
     {
-      row->ymin = _this->GetRECT().H()*0.5f - _this->GetText().mSize * 0.5f;
+      row->ymin = _this->GetPaddedRECT().H()*0.5f - _this->GetText().mSize * 0.5f;
       break;
     }
     case EVAlign::Bottom:
     {
-      row->ymin = _this->GetRECT().H() - _this->GetText().mSize;
+      row->ymin = _this->GetPaddedRECT().H() - _this->GetText().mSize;
       break;
     }
   }

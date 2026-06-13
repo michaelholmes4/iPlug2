@@ -1340,7 +1340,7 @@ public:
   void RemovePopupMenuControl();
   
   /** Attach a control for text entry, to override platform text entry */
-  void AttachTextEntryControl(float cornerRadius = 0.0);
+  void AttachTextEntryControl(float cornerRadius = 0.0, float padding = 0.0);
   
   /** Remove the IGraphics text entry, use platform text entry if available */
   void RemoveTextEntryControl();

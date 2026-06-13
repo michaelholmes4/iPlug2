@@ -38,7 +38,7 @@ BEGIN_IGRAPHICS_NAMESPACE
 class ITextEntryControl : public IControl
 {
 public:
-  ITextEntryControl(float cornerRadius = 0.0);
+  ITextEntryControl(float cornerRadius = 0.0, float padding = 0.0);
   
   //IControl
   void Draw(IGraphics& g) override;
@@ -63,7 +63,12 @@ public:
   void CreateTextEntry(int paramIdx, const IText& text, const IRECT& bounds, int length, const char* str, bool isPassword = false);
 
 private:
-    
+
+  // Bounds used for text/cursor/selection layout - mRECT inset horizontally by
+  // mPadding, so the background fill (drawn at mRECT) can match the caller's
+  // cell exactly while the text itself gets a small left/right inset.
+  IRECT GetPaddedRECT() const { return mRECT.GetReducedFromLeft(mPadding).GetReducedFromRight(mPadding); }
+
   void SetStr(const char* str);
 
   template<typename Proc>
@@ -91,6 +96,7 @@ private:
   std::u16string mPasswordString;
   float mSpaceWidth;
   float mCornerRadius;
+  float mPadding;
   bool mIsPassword;
 };
 

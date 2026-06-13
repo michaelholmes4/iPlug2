@@ -376,11 +376,11 @@ void IGraphics::RemovePopupMenuControl()
   mPopupControl = nullptr;
 }
 
-void IGraphics::AttachTextEntryControl(float cornerRadius)
+void IGraphics::AttachTextEntryControl(float cornerRadius, float padding)
 {
   if (!mTextEntryControl)
   {
-    mTextEntryControl = std::make_unique<ITextEntryControl>(cornerRadius);
+    mTextEntryControl = std::make_unique<ITextEntryControl>(cornerRadius, padding);
     mTextEntryControl->SetDelegate(*GetDelegate());
   }
 }

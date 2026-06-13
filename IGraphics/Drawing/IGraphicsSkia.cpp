@@ -1086,6 +1086,25 @@ void IGraphicsSkia::ApplyShadowMask(ILayerPtr& layer, RawBitmapData& mask, const
   }
 }
 
+APIBitmap* IGraphicsSkia::SnapshotCanvas(const IRECT& bounds)
+{
+  const float scale = GetBackingPixelScale();
+  const int x = static_cast<int>(std::round(bounds.L * scale));
+  const int y = static_cast<int>(std::round(bounds.T * scale));
+  const int w = std::max(1, static_cast<int>(std::round(bounds.W() * scale)));
+  const int h = std::max(1, static_cast<int>(std::round(bounds.H() * scale)));
+
+  sk_sp<SkImage> snapshot = mSurface->makeImageSnapshot(SkIRect::MakeXYWH(x, y, w, h));
+
+  if (!snapshot)
+    return nullptr;
+
+  APIBitmap* pCaptured = CreateAPIBitmap(w, h, GetScreenScale(), GetDrawScale());
+  pCaptured->GetBitmap()->mSurface->getCanvas()->drawImage(snapshot, 0.0, 0.0);
+
+  return pCaptured;
+}
+
 void IGraphicsSkia::DrawFastDropShadow(const IRECT& innerBounds, const IRECT& outerBounds, float xyDrop, float roundness, float blur, IBlend* pBlend)
 {
   SkRect r = SkiaRect(innerBounds.GetTranslated(xyDrop, xyDrop));

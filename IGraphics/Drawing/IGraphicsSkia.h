@@ -125,6 +125,7 @@ public:
   void ApplyLayerDropShadow(ILayerPtr& layer, const IShadow& shadow) override;
   void GetLayerBitmapData(const ILayerPtr& layer, RawBitmapData& data) override;
   void ApplyShadowMask(ILayerPtr& layer, RawBitmapData& mask, const IShadow& shadow) override;
+  APIBitmap* SnapshotCanvas(const IRECT& bounds) override;
 
   void UpdateLayer() override;
   

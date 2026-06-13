@@ -2196,7 +2196,11 @@ void IGraphics::ApplyLayerDropShadow(ILayerPtr& layer, const IShadow& shadow)
 
 void IGraphics::DrawBackdropBlur(const IRECT& bounds, float blurSize, const IBlend* pBlend)
 {
-  const IRECT r = bounds.GetPixelAligned(GetBackingPixelScale());
+  const float scale = GetBackingPixelScale();
+
+  // Capture a region padded beyond bounds, so the blur has surrounding context to draw on -
+  // otherwise the edges of bounds would smear toward the (unblurred) edge pixels of the capture.
+  const IRECT r = bounds.GetPadded(std::max(0.f, blurSize)).Intersect(GetBounds()).GetPixelAligned(scale);
 
   ILayerPtr layer(new ILayer(SnapshotCanvas(r), r, nullptr, IRECT()));
 
@@ -2218,8 +2222,11 @@ void IGraphics::DrawBackdropBlur(const IRECT& bounds, float blurSize, const IBle
     srcRect = dstRect;
   }
 
-  // Upsample the final (small, blurred) layer back to the original bounds - magnification adds further smoothing.
-  DrawFittedLayer(layer, bounds, pBlend);
+  // Upsample the final (small, blurred) layer back to the padded capture rect, then clip to
+  // bounds so only the originally-requested region is drawn - magnification adds further smoothing.
+  PathClipRegion(bounds);
+  DrawFittedLayer(layer, r, pBlend);
+  PathClipRegion();
 }
 
 bool IGraphics::LoadFont(const char* fontID, const char* fileNameOrResID)

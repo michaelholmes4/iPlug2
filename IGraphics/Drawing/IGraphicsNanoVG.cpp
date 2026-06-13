@@ -9,6 +9,7 @@
 */
 
 #include <cmath>
+#include <cstring>
 
 #include "IGraphicsNanoVG.h"
 #include "ITextEntryControl.h"
@@ -416,8 +417,8 @@ APIBitmap* IGraphicsNanoVG::SnapshotCanvas(const IRECT& bounds)
   const int w = std::max(1, static_cast<int>(std::round(bounds.W() * scale)));
   const int h = std::max(1, static_cast<int>(std::round(bounds.H() * scale)));
 
-  RawBitmapData data;
-  data.Resize(w * h * 4);
+  RawBitmapData packed;
+  packed.Resize(w * h * 4);
 
   const bool wasInDraw = mInDraw;
   if (wasInDraw)
@@ -425,11 +426,23 @@ APIBitmap* IGraphicsNanoVG::SnapshotCanvas(const IRECT& bounds)
 
 #if defined(IGRAPHICS_GL)
   // GL FBO storage is bottom-up, so convert the top-left-origin rect to GL's bottom-left origin.
+  // glReadPixels packs rows tightly (w * 4 bytes) so it can write directly into `packed`.
   nvgBindFramebuffer(mMainFrameBuffer);
   const int fboHeight = static_cast<int>(std::round(WindowHeight() * GetScreenScale()));
-  nvgReadPixels(mVG, mMainFrameBuffer->image, x, fboHeight - y - h, w, h, data.Get());
+  nvgReadPixels(mVG, mMainFrameBuffer->image, x, fboHeight - y - h, w, h, packed.Get());
 #else
+  // mnvgReadPixels always uses the source texture's full width as the row stride of the
+  // destination buffer, regardless of the requested region width, so read into a
+  // full-width-stride buffer first and then repack the region into tightly-packed rows.
+  const int fboWidth = static_cast<int>(std::round(WindowWidth() * GetScreenScale()));
+  RawBitmapData data;
+  data.Resize(fboWidth * h * 4);
   nvgReadPixels(mVG, mMainFrameBuffer->image, x, y, w, h, data.Get());
+
+  const int srcStride = fboWidth * 4;
+  const int dstStride = w * 4;
+  for (int row = 0; row < h; row++)
+    memcpy(packed.Get() + row * dstStride, data.Get() + row * srcStride, dstStride);
 #endif
 
   if (wasInDraw)
@@ -439,7 +452,7 @@ APIBitmap* IGraphicsNanoVG::SnapshotCanvas(const IRECT& bounds)
   }
 
   // Wrap the captured pixels in a plain (non-FBO) image, same as the raw mask bitmap in ApplyShadowMask().
-  return new Bitmap(mVG, w, h, data.Get(), GetScreenScale(), GetDrawScale());
+  return new Bitmap(mVG, w, h, packed.Get(), GetScreenScale(), GetDrawScale());
 }
 
 void IGraphicsNanoVG::ApplyShadowMask(ILayerPtr& layer, RawBitmapData& mask, const IShadow& shadow)

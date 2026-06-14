@@ -449,6 +449,13 @@ APIBitmap* IGraphicsNanoVG::SnapshotCanvas(const IRECT& bounds)
   {
     nvgBindFramebuffer(mMainFrameBuffer); // resume main frame buffer update
     nvgBeginFrame(mVG, WindowWidth(), WindowHeight(), GetScreenScale());
+
+    // nvgBeginFrame resets NanoVG's scissor/transform state, discarding the clip
+    // region and transform set up by PrepareRegion() for the control currently
+    // being drawn. Restore them (mirrors the PushLayer/PopLayer pattern), otherwise
+    // the remainder of this control's Draw() is unclipped and mis-scaled.
+    PathClipRegion();
+    PathClear();
   }
 
   // Wrap the captured pixels in a plain (non-FBO) image, same as the raw mask bitmap in ApplyShadowMask().

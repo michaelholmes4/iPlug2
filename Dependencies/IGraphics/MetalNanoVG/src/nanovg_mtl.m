@@ -586,14 +586,18 @@ void mnvgReadPixels(NVGcontext* ctx, int image, int x, int y, int width,
     bytesPerRow = tex->tex.width;
   }
 
-  // Makes sure the command execution for the image has been done.
+  // Makes sure the command execution for the image has been done. Within a
+  // single outer Draw() pass, nested DrawBackdropBlur() calls (e.g. a dialog's
+  // blur on top of a panel that itself has a blurred background) can each
+  // flush a separate in-flight command buffer targeting this same image, in
+  // different cbuffers slots — wait for all of them, not just the first
+  // match, otherwise the read can race ahead of the most recent flush.
   for (MNVGbuffers* buffers in mtl.cbuffers) {
     if (buffers.isBusy && buffers.image == image && buffers.commandBuffer) {
       id<MTLCommandBuffer> commandBuffer = buffers.commandBuffer;
       if (commandBuffer.status != MTLCommandBufferStatusError) {
         [commandBuffer waitUntilCompleted];
       }
-      break;
     }
   }
 

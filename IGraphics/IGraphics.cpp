@@ -2219,7 +2219,11 @@ void IGraphics::DrawBackdropBlur(const IRECT& bounds, float blurSize, const IBle
     StartLayer(nullptr, dstRect);
     DrawFittedLayer(layer, dstRect, nullptr);
     layer = EndLayer();
-    srcRect = dstRect;
+
+    // StartLayer pixel-aligns dstRect, which can grow it slightly (e.g. when the previous
+    // layer's pixel size is odd). Use the layer's actual bounds so the next iteration's
+    // DrawFittedLayer scales from the same rect this content was drawn into.
+    srcRect = layer->Bounds();
   }
 
   // Upsample the final (small, blurred) layer back to the padded capture rect, then clip to

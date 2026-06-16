@@ -1116,6 +1116,51 @@ void IGraphicsSkia::DrawFastDropShadow(const IRECT& innerBounds, const IRECT& ou
   mCanvas->drawRoundRect(r, roundness, roundness, paint);
 }
 
+ILayerPtr IGraphicsSkia::BlurLayer(const ILayerPtr& layer, float blurSize)
+{
+#ifdef IGRAPHICS_CPU
+  return IGraphics::BlurLayer(layer, blurSize);
+#else
+  if (!mGrContext)
+    return IGraphics::BlurLayer(layer, blurSize);
+
+  const SkiaDrawable* drawable = static_cast<const SkiaDrawable*>(layer->GetAPIBitmap()->GetBitmap());
+  if (!drawable)
+    return IGraphics::BlurLayer(layer, blurSize);
+
+  sk_sp<SkImage> sourceImage;
+  if (drawable->mIsSurface && drawable->mSurface)
+    sourceImage = drawable->mSurface->makeImageSnapshot();
+  else if (drawable->mImage)
+    sourceImage = drawable->mImage;
+
+  if (!sourceImage)
+    return IGraphics::BlurLayer(layer, blurSize);
+
+  const int w = layer->GetAPIBitmap()->GetWidth();
+  const int h = layer->GetAPIBitmap()->GetHeight();
+
+  SkImageInfo info = SkImageInfo::MakeN32Premul(w, h);
+  sk_sp<SkSurface> tmpSurface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
+  if (!tmpSurface)
+    return IGraphics::BlurLayer(layer, blurSize);
+
+  // sigma in pixels (tmpSurface canvas has no transform — pixel space)
+  const float sigma = blurSize * GetBackingPixelScale() * 0.5f;
+  SkPaint blurPaint;
+  blurPaint.setImageFilter(SkImageFilters::Blur(sigma, sigma, SkTileMode::kClamp, nullptr));
+
+  tmpSurface->getCanvas()->clear(SK_ColorTRANSPARENT);
+  tmpSurface->getCanvas()->drawImage(sourceImage, 0.f, 0.f, SkSamplingOptions(), &blurPaint);
+  mGrContext->flushAndSubmit();
+
+  APIBitmap* pBmp = new Bitmap(std::move(tmpSurface), w, h,
+                               layer->GetAPIBitmap()->GetScale(),
+                               (float)layer->GetAPIBitmap()->GetDrawScale());
+  return std::make_unique<ILayer>(pBmp, layer->Bounds(), nullptr, IRECT());
+#endif
+}
+
 void IGraphicsSkia::DrawMultiLineText(const IText& text, const char* str, const IRECT& bounds, const IBlend* pBlend)
 {
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH

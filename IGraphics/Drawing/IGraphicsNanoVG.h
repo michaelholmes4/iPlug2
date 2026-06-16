@@ -108,6 +108,8 @@ public:
   void DrawDottedRect(const IColor& color, const IRECT& bounds, const IBlend* pBlend, float thickness, float dashLen) override;
 
   void DrawFastDropShadow(const IRECT& innerBounds, const IRECT& outerBounds, float xyDrop = 5.f, float roundness = 0.f, float blur = 10.f, IBlend* pBlend = nullptr) override;
+
+  ILayerPtr BlurLayer(const ILayerPtr& layer, float blurSize) override;
   
   void DrawMultiLineText(const IText& text, const char* str, const IRECT& bounds, const IBlend* pBlend) override;
   
@@ -163,6 +165,19 @@ private:
   void SetClipRegion(const IRECT& r) override;
   void UpdateLayer() override;
   void ClearFBOStack();
+
+#if defined IGRAPHICS_GL && !defined IGRAPHICS_GL2 && !defined IGRAPHICS_GLES2
+  struct BlurShader {
+    GLuint program = 0, vao = 0, vbo = 0;
+    GLint  uTex = -1, uDir = -1, uRadius = -1;
+    bool   initialized = false;
+  } mBlurShader;
+  void _InitBlurShader();
+#endif
+
+#ifdef IGRAPHICS_METAL
+  ILayerPtr _BlurLayerMetal(const ILayerPtr& layer, float blurSize);
+#endif
   
   bool mInDraw = false;
   WDL_Mutex mFBOMutex;

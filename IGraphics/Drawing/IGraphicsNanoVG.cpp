@@ -83,6 +83,7 @@ class IGraphicsNanoVG::Bitmap : public APIBitmap
 public:
   Bitmap(NVGcontext* pContext, const char* path, double sourceScale, int nvgImageID, bool shared = false);
   Bitmap(IGraphicsNanoVG* pGraphics, NVGcontext* pContext, int width, int height, float scale, float drawScale);
+  Bitmap(IGraphicsNanoVG* pGraphics, NVGcontext* pContext, NVGframebuffer* pFBO, int width, int height, float scale, float drawScale);
   Bitmap(NVGcontext* pContext, int width, int height, const uint8_t* pData, float scale, float drawScale);
   virtual ~Bitmap();
   NVGframebuffer* GetFBO() const { return mFBO; }
@@ -124,6 +125,15 @@ IGraphicsNanoVG::Bitmap::Bitmap(IGraphicsNanoVG* pGraphics, NVGcontext* pContext
   nvgBeginFrame(mVG, width, height, 1.f);
   nvgEndFrame(mVG);
   
+  SetBitmap(mFBO->image, width, height, scale, drawScale);
+}
+
+IGraphicsNanoVG::Bitmap::Bitmap(IGraphicsNanoVG* pGraphics, NVGcontext* pContext, NVGframebuffer* pFBO, int width, int height, float scale, float drawScale)
+{
+  assert(pFBO && width > 0 && height > 0);
+  mGraphics = pGraphics;
+  mVG = pContext;
+  mFBO = pFBO;
   SetBitmap(mFBO->image, width, height, scale, drawScale);
 }
 
@@ -525,15 +535,25 @@ void IGraphicsNanoVG::OnViewDestroyed()
 
   StaticStorage<APIBitmap>::Accessor storage(mBitmapCache);
   storage.Clear();
-  
+
+#if defined IGRAPHICS_GL && !defined IGRAPHICS_GL2 && !defined IGRAPHICS_GLES2
+  if (mBlurShader.initialized)
+  {
+    glDeleteProgram(mBlurShader.program);
+    glDeleteBuffers(1, &mBlurShader.vbo);
+    glDeleteVertexArrays(1, &mBlurShader.vao);
+    mBlurShader = {};
+  }
+#endif
+
   if(mMainFrameBuffer != nullptr)
     nvgDeleteFramebuffer(mMainFrameBuffer);
-  
+
   mMainFrameBuffer = nullptr;
-  
+
   if(mVG)
     nvgDeleteContext(mVG);
-  
+
   mVG = nullptr;
 }
 
@@ -961,6 +981,197 @@ void IGraphicsNanoVG::ClearFBOStack()
     nvgDeleteFramebuffer(mFBOStack.top());
     mFBOStack.pop();
   }
+}
+
+#if defined IGRAPHICS_GL && !defined IGRAPHICS_GL2 && !defined IGRAPHICS_GLES2
+
+static const char kBlurVS[] =
+#ifdef IGRAPHICS_GLES3
+  "#version 300 es\n"
+  "precision highp float;\n"
+  "in vec2 aPos;\n"
+  "out vec2 vUV;\n"
+#else
+  "#version 330 core\n"
+  "in vec2 aPos;\n"
+  "out vec2 vUV;\n"
+#endif
+  "void main() { vUV = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }";
+
+static const char kBlurFS[] =
+#ifdef IGRAPHICS_GLES3
+  "#version 300 es\n"
+  "precision mediump float;\n"
+  "in vec2 vUV;\n"
+  "out vec4 FragColor;\n"
+#else
+  "#version 330 core\n"
+  "in vec2 vUV;\n"
+  "out vec4 FragColor;\n"
+#endif
+  "uniform sampler2D uTex;\n"
+  "uniform vec2 uDir;\n"
+  "uniform float uRadius;\n"
+  "void main() {\n"
+  "  vec4 color = vec4(0.0); float weight = 0.0;\n"
+  "  int radius = int(uRadius);\n"
+  "  for (int i = -radius; i <= radius; i++) {\n"
+  "    float w = exp(-0.5 * float(i * i) / (uRadius * uRadius * 0.25));\n"
+  "    vec2 s = clamp(vUV + uDir * float(i), vec2(0.0), vec2(1.0));\n"
+  "    color += texture(uTex, s) * w; weight += w;\n"
+  "  }\n"
+  "  FragColor = color / max(weight, 0.0001);\n"
+  "}";
+
+void IGraphicsNanoVG::_InitBlurShader()
+{
+  if (mBlurShader.initialized)
+    return;
+
+  auto compileShader = [](GLenum type, const char* src) -> GLuint {
+    GLuint shader = glCreateShader(type);
+    glShaderSource(shader, 1, &src, nullptr);
+    glCompileShader(shader);
+    GLint ok = 0;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
+    if (!ok)
+    {
+      GLint len = 0;
+      glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &len);
+      std::string log(len, '\0');
+      glGetShaderInfoLog(shader, len, nullptr, log.data());
+      DBGMSG("Blur shader compile error: %s\n", log.c_str());
+      glDeleteShader(shader);
+      return 0;
+    }
+    return shader;
+  };
+
+  GLuint vs = compileShader(GL_VERTEX_SHADER, kBlurVS);
+  GLuint fs = compileShader(GL_FRAGMENT_SHADER, kBlurFS);
+  if (!vs || !fs) { glDeleteShader(vs); glDeleteShader(fs); return; }
+
+  GLuint program = glCreateProgram();
+  glAttachShader(program, vs);
+  glAttachShader(program, fs);
+  glLinkProgram(program);
+  glDeleteShader(vs);
+  glDeleteShader(fs);
+
+  GLint ok = 0;
+  glGetProgramiv(program, GL_LINK_STATUS, &ok);
+  if (!ok) { glDeleteProgram(program); return; }
+
+  mBlurShader.program = program;
+  mBlurShader.uTex    = glGetUniformLocation(program, "uTex");
+  mBlurShader.uDir    = glGetUniformLocation(program, "uDir");
+  mBlurShader.uRadius = glGetUniformLocation(program, "uRadius");
+
+  static const float quadVerts[] = {
+    -1.f, -1.f,   1.f, -1.f,   -1.f,  1.f,
+     1.f, -1.f,   1.f,  1.f,   -1.f,  1.f,
+  };
+
+  glGenVertexArrays(1, &mBlurShader.vao);
+  glBindVertexArray(mBlurShader.vao);
+  glGenBuffers(1, &mBlurShader.vbo);
+  glBindBuffer(GL_ARRAY_BUFFER, mBlurShader.vbo);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, GL_STATIC_DRAW);
+  GLint posLoc = glGetAttribLocation(program, "aPos");
+  glVertexAttribPointer(posLoc, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+  glEnableVertexAttribArray(posLoc);
+  glBindVertexArray(0);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+  mBlurShader.initialized = true;
+}
+
+#endif // IGRAPHICS_GL && !GL2 && !GLES2
+
+ILayerPtr IGraphicsNanoVG::BlurLayer(const ILayerPtr& layer, float blurSize)
+{
+#if defined IGRAPHICS_GL && !defined IGRAPHICS_GL2 && !defined IGRAPHICS_GLES2
+
+  _InitBlurShader();
+  if (!mBlurShader.initialized)
+    return IGraphics::BlurLayer(layer, blurSize);
+
+  const Bitmap* pSrcBmp = static_cast<const Bitmap*>(layer->GetAPIBitmap());
+  NVGframebuffer* srcFBO = pSrcBmp->GetFBO();
+  if (!srcFBO)
+    return IGraphics::BlurLayer(layer, blurSize);
+
+  const int w = pSrcBmp->GetWidth();
+  const int h = pSrcBmp->GetHeight();
+
+  NVGframebuffer* fboA = nvgCreateFramebuffer(mVG, w, h, 0);
+  NVGframebuffer* fboB = nvgCreateFramebuffer(mVG, w, h, 0);
+  if (!fboA || !fboB)
+  {
+    if (fboA) nvgDeleteFramebuffer(fboA);
+    if (fboB) nvgDeleteFramebuffer(fboB);
+    return IGraphics::BlurLayer(layer, blurSize);
+  }
+
+  nvgEndFrame(mVG);
+
+  GLint savedFBO = 0;
+  glGetIntegerv(GL_FRAMEBUFFER_BINDING, &savedFBO);
+  GLint savedVP[4];
+  glGetIntegerv(GL_VIEWPORT, savedVP);
+
+  glDisable(GL_BLEND);
+  glDisable(GL_STENCIL_TEST);
+  glUseProgram(mBlurShader.program);
+  glUniform1i(mBlurShader.uTex, 0);
+  const float pixScale = GetBackingPixelScale();
+  const float radius = std::max(1.f, blurSize * pixScale * 0.5f);
+  glUniform1f(mBlurShader.uRadius, radius);
+  glActiveTexture(GL_TEXTURE0);
+  glBindVertexArray(mBlurShader.vao);
+
+  // H-pass: srcFBO → fboA
+  glBindFramebuffer(GL_FRAMEBUFFER, fboA->fbo);
+  glViewport(0, 0, w, h);
+  glClearColor(0.f, 0.f, 0.f, 0.f);
+  glClear(GL_COLOR_BUFFER_BIT);
+  glBindTexture(GL_TEXTURE_2D, srcFBO->texture);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glUniform2f(mBlurShader.uDir, 1.f / float(w), 0.f);
+  glDrawArrays(GL_TRIANGLES, 0, 6);
+
+  // V-pass: fboA → fboB
+  glBindFramebuffer(GL_FRAMEBUFFER, fboB->fbo);
+  glViewport(0, 0, w, h);
+  glClearColor(0.f, 0.f, 0.f, 0.f);
+  glClear(GL_COLOR_BUFFER_BIT);
+  glBindTexture(GL_TEXTURE_2D, fboA->texture);
+  glUniform2f(mBlurShader.uDir, 0.f, 1.f / float(h));
+  glDrawArrays(GL_TRIANGLES, 0, 6);
+
+  glBindVertexArray(0);
+  glEnable(GL_BLEND);
+  glViewport(savedVP[0], savedVP[1], savedVP[2], savedVP[3]);
+  glBindFramebuffer(GL_FRAMEBUFFER, mMainFrameBuffer->fbo);
+  nvgBeginFrame(mVG, WindowWidth(), WindowHeight(), GetScreenScale());
+
+  // fboA is consumed — defer deletion to end-of-frame via the FBO stack
+  DeleteFBO(fboA);
+
+  APIBitmap* pBlurredBmp = new Bitmap(this, mVG, fboB, w, h,
+                                      pSrcBmp->GetScale(), (float)pSrcBmp->GetDrawScale());
+  return std::make_unique<ILayer>(pBlurredBmp, layer->Bounds(), nullptr, IRECT());
+
+#elif defined IGRAPHICS_METAL
+
+  return _BlurLayerMetal(layer, blurSize);
+
+#else
+
+  return IGraphics::BlurLayer(layer, blurSize);
+
+#endif
 }
 
 void IGraphicsNanoVG::DrawFastDropShadow(const IRECT& innerBounds, const IRECT& outerBounds, float xyDrop, float roundness, float blur, IBlend* pBlend)

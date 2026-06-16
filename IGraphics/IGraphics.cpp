@@ -2207,30 +2207,40 @@ void IGraphics::DrawBackdropBlur(const IRECT& bounds, float blurSize, const IBle
   if (!layer->GetAPIBitmap())
     return;
 
-  // Progressively downsample the capture, halving its size each pass. Each pass draws the
-  // previous layer into a smaller one via DrawFittedLayer, so bilinear minification blurs it.
+  layer = BlurLayer(layer, blurSize);
+
+  PathClipRegion(bounds);
+  DrawFittedLayer(layer, r, pBlend);
+  PathClipRegion();
+}
+
+ILayerPtr IGraphics::BlurLayer(const ILayerPtr& layer, float blurSize)
+{
+  // Fallback: progressive downsampling via bilinear minification.
+  // GPU backends override this with a proper blur filter.
   const int iterations = Clip(static_cast<int>(std::round(std::log2(std::max(2.f, blurSize * 0.5f)))), 1, 5);
 
-  IRECT srcRect = r;
+  // Track the current source layer without copying the unique_ptr:
+  // first iteration reads from the caller's layer, subsequent ones from our result.
+  ILayerPtr result;
+  const ILayerPtr* pSrc = &layer;
+  IRECT srcRect = layer->Bounds();
 
   for (int i = 0; i < iterations; i++)
   {
     const IRECT dstRect(0.f, 0.f, std::max(1.f, srcRect.W() * 0.5f), std::max(1.f, srcRect.H() * 0.5f));
     StartLayer(nullptr, dstRect);
-    DrawFittedLayer(layer, dstRect, nullptr);
-    layer = EndLayer();
+    DrawFittedLayer(*pSrc, dstRect, nullptr);
+    result = EndLayer();
+    pSrc = &result;
 
     // StartLayer pixel-aligns dstRect, which can grow it slightly (e.g. when the previous
     // layer's pixel size is odd). Use the layer's actual bounds so the next iteration's
     // DrawFittedLayer scales from the same rect this content was drawn into.
-    srcRect = layer->Bounds();
+    srcRect = result->Bounds();
   }
 
-  // Upsample the final (small, blurred) layer back to the padded capture rect, then clip to
-  // bounds so only the originally-requested region is drawn - magnification adds further smoothing.
-  PathClipRegion(bounds);
-  DrawFittedLayer(layer, r, pBlend);
-  PathClipRegion();
+  return result;
 }
 
 bool IGraphics::LoadFont(const char* fontID, const char* fileNameOrResID)

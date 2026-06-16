@@ -577,6 +577,14 @@ public:
    * @param pBlend Optional blend method for compositing the blurred result */
   void DrawBackdropBlur(const IRECT& bounds, float blurSize, const IBlend* pBlend = nullptr);
 
+  /** Blurs the contents of a layer using a GPU-accelerated filter. Backend overrides use
+   * SkImageFilters::Blur (Skia) or a two-pass GLSL/MPS shader (NanoVG); the base implementation
+   * falls back to progressive downsampling. The returned layer has the same bounds as the input.
+   * @param layer The layer to blur
+   * @param blurSize Approximate blur radius in points
+   * @return A new layer containing the blurred result */
+  virtual ILayerPtr BlurLayer(const ILayerPtr& layer, float blurSize);
+
 protected:
   /** Implemented by a graphics backend to capture the canvas contents within bounds, already drawn this frame,
    * into a new offscreen bitmap, without re-rendering. Used by DrawBackdropBlur().

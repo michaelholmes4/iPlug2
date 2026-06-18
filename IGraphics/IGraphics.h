@@ -1637,7 +1637,14 @@ public:
    * @param x Where the X position will be stored
    * @param y Where the Y position will be stored */
   void GetMouseDownPoint(float& x, float&y) const { x = mMouseDownX; y = mMouseDownY; }
-  
+
+  /** Get the x, y position of the last known mouse cursor location. Unlike GetMouseOver(),
+   * this keeps tracking the real cursor position while a control (e.g. a text entry) has
+   * temporarily intercepted mouse-over dispatch for other controls.
+   * @param x Where the X position will be stored
+   * @param y Where the Y position will be stored */
+  void GetMousePosition(float& x, float& y) const { x = mCursorX; y = mCursorY; }
+
   /**  Set by the platform class if the mouse input is coming from a tablet/stylus
    * @param tablet \c true means input is from a tablet */
   void SetTabletInput(bool tablet) { mTabletInput = tablet; }

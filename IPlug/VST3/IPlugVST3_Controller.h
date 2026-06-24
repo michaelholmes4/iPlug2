@@ -88,6 +88,9 @@ public:
   /** Get the name of the track that the plug-in is inserted on */
   void GetTrackName(WDL_String& str) override { str = mChannelName; };
 
+  /** Get the unique, host-assigned, rename-stable id string of the track that the plug-in is inserted on */
+  void GetTrackUID(WDL_String& str) override { str = mChannelUID; };
+
   /** Get the index of the track that the plug-in is inserted on */
   int GetTrackIndex() override { return mChannelIndex; };
 

@@ -123,8 +123,15 @@ public:
   /** Get the name of the track that the plug-in is inserted on */
   virtual void GetTrackName(WDL_String& str) {}
 
-  /** Get the index of the track that the plug-in is inserted on */
-  virtual int GetTrackIndex() { return 0; }
+  /** Get the unique, host-assigned, rename-stable id string of the track that the plug-in is
+   * inserted on. Only ever populated on VST3 (ChannelContext::kChannelUIDKey), and only if the
+   * host sends it (the VST3 spec marks it optional); empty on every other format/host. */
+  virtual void GetTrackUID(WDL_String& str) {}
+
+  /** Get the index of the track that the plug-in is inserted on, or -1 if the host/format
+   * doesn't supply one - do not default this to 0, which would be indistinguishable from a
+   * genuine first-track index */
+  virtual int GetTrackIndex() { return -1; }
 
   /** Get the namespace of the track that the plug-in is inserted on */
   virtual void GetTrackNamespace(WDL_String& str) {}

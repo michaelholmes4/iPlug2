@@ -367,7 +367,7 @@ public:
   WDL_String mChannelNamespace;
   WDL_String mChannelUID;
   int mChannelNamespaceIndex = 0;
-  int mChannelIndex = 0;
+  int mChannelIndex = -1; // -1 until the host sends ChannelContext::kChannelIndexKey (see GetTrackIndex)
   unsigned int mChannelColor = 0;
 };
 

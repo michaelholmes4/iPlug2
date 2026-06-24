@@ -984,6 +984,14 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink, const CVTimeSt
   float d = [pEvent deltaY];
   if (mGraphics)
     mGraphics->OnMouseWheel(info.x, info.y, info.ms, d);
+
+  // deltaX (a two-finger horizontal trackpad swipe, or a mouse with a
+  // horizontal scroll wheel) was previously dropped entirely here - nothing
+  // in this app ever saw it. Forwarded as its own event rather than folded
+  // into the call above so existing OnMouseWheel overrides stay untouched.
+  float dX = [pEvent deltaX];
+  if (mGraphics && dX != 0.f)
+    mGraphics->OnMouseHWheel(info.x, info.y, info.ms, dX);
 }
 
 static void MakeCursorFromName(NSCursor*& cursor, const char *name)

@@ -1237,10 +1237,20 @@ bool IGraphics::OnMouseDblClick(float x, float y, const IMouseMod& mod)
 bool IGraphics::OnMouseWheel(float x, float y, const IMouseMod& mod, float d)
 {
   IControl* pControl = GetMouseControl(x, y, false);
-  
+
   if (pControl)
     pControl->OnMouseWheel(x, y, mod, d);
-  
+
+  return pControl;
+}
+
+bool IGraphics::OnMouseHWheel(float x, float y, const IMouseMod& mod, float deltaX)
+{
+  IControl* pControl = GetMouseControl(x, y, false);
+
+  if (pControl)
+    pControl->OnMouseHWheel(x, y, mod, deltaX);
+
   return pControl;
 }
 

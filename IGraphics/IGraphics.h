@@ -1573,6 +1573,16 @@ public:
    * @return /c true on handled */
   bool OnMouseWheel(float x, float y, const IMouseMod& mod, float delta);
 
+  /** Horizontal counterpart to OnMouseWheel - fired separately for a
+   * horizontal scroll/trackpad swipe, so platform layers that can report it
+   * don't have to choose one axis over the other.
+   * @param x The X coordinate at which the mouse event occurred
+   * @param y The Y coordinate at which the mouse event occurred
+   * @param mod IMouseMod struct contain information about the modifiers held
+   * @param deltaX Horizontal scroll amount (positive = right, negative = left)
+   * @return /c true on handled */
+  bool OnMouseHWheel(float x, float y, const IMouseMod& mod, float deltaX);
+
   /** @param x The X coordinate of the mouse cursor at the time of the key press
    * @param y The Y coordinate of the mouse cursor at the time of the key press
    * @param key Info about the keypress

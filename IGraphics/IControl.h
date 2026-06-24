@@ -106,14 +106,26 @@ public:
    * @param mod A struct indicating which modifier keys are held for the event */
   virtual void OnMouseDblClick(float x, float y, const IMouseMod& mod);
 
-  /** Implement this method to respond to a mouse wheel event on this control. 
+  /** Implement this method to respond to a mouse wheel event on this control.
    * @param x The X coordinate of the mouse event
    * @param y The Y coordinate of the mouse event
-   * @param mod A struct indicating which modifier keys are held for the event 
+   * @param mod A struct indicating which modifier keys are held for the event
    * @param d The delta value (difference) since the last mouse wheel event */
   virtual void OnMouseWheel(float x, float y, const IMouseMod& mod, float d) {};
 
-  /** Implement this method to respond to a key down event on this control. 
+  /** Implement this method to respond to a horizontal mouse wheel/trackpad
+   * scroll event on this control (e.g. a two-finger horizontal swipe).
+   * Separate from OnMouseWheel (not a replacement for it) so existing
+   * overrides of OnMouseWheel everywhere are completely unaffected - a
+   * control only needs to override this if it actually has something
+   * horizontal to scroll.
+   * @param x The X coordinate of the mouse event
+   * @param y The Y coordinate of the mouse event
+   * @param mod A struct indicating which modifier keys are held for the event
+   * @param dX The horizontal delta value (difference) since the last event */
+  virtual void OnMouseHWheel(float x, float y, const IMouseMod& mod, float dX) {};
+
+  /** Implement this method to respond to a key down event on this control.
    * @param x The X coordinate of the mouse at the time of this key down event
    * @param y The Y coordinate of the mouse at the time of this key down event
    * @param key Info about the keypress */

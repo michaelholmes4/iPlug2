@@ -409,6 +409,28 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
         return 0;
       }
     }
+    case WM_MOUSEHWHEEL:
+    {
+      // Horizontal counterpart to WM_MOUSEWHEEL - sent for a two-finger
+      // horizontal trackpad swipe or a mouse with a tilt/horizontal wheel.
+      // Previously unhandled here entirely (fell through to DefWindowProc),
+      // so horizontal scroll never reached any control on Windows.
+      if (pGraphics->mParamEditWnd)
+      {
+        pGraphics->mParamEditMsg = kCancel;
+        return 0;
+      }
+      else
+      {
+        IMouseInfo info = pGraphics->GetMouseInfo(lParam, wParam);
+        float dX = GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
+        const float scale = pGraphics->GetTotalScale();
+        RECT r;
+        GetWindowRect(hWnd, &r);
+        pGraphics->OnMouseHWheel(info.x - (r.left / scale), info.y - (r.top / scale), info.ms, dX);
+        return 0;
+      }
+    }
     case WM_TOUCH:
     {
       UINT nTouches = LOWORD(wParam);

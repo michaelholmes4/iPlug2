@@ -3,6 +3,11 @@
 
 #include "IGraphicsSkia.h"
 
+#if defined TREEDSP_FONT_DIAGNOSTICS
+#include <cstdio>
+#include "Logging/TreeLogger_C.h"
+#endif
+
 #pragma warning( push )
 #pragma warning( disable : 4244 )
 #include "include/core/SkMaskFilter.h"
@@ -692,8 +697,20 @@ void IGraphicsSkia::PrepareAndMeasureText(const IText& text, const char* str, IR
   
   StaticStorage<Font>::Accessor storage(sFontCache);
   Font* pFont = storage.Find(text.mFont);
-  
+
   assert(pFont && "No font found - did you forget to load it?");
+
+  if (!pFont)
+  {
+#if defined TREEDSP_FONT_DIAGNOSTICS
+    char msg[256];
+    snprintf(msg, sizeof(msg), "PrepareAndMeasureText: font \"%s\" not found in cache - skipping text to avoid crash", text.mFont);
+    tree_log_error(msg);
+#endif
+    x = r.L;
+    y = r.T;
+    return;
+  }
 
   font.setTypeface(pFont->mTypeface);
   font.setHinting(SkFontHinting::kSlight);

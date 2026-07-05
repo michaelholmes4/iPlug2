@@ -216,6 +216,7 @@ if(NOT TARGET iPlug2_IGraphics_NanoVG_Metal_obj)
   if(APPLE OR IOS)
     add_library(iPlug2_IGraphics_NanoVG_Metal_obj OBJECT
       ${IGRAPHICS_DIR}/Drawing/IGraphicsNanoVG_src.m
+      ${IGRAPHICS_DIR}/Drawing/IGraphicsNanoVG_metal.mm
     )
 
     target_include_directories(iPlug2_IGraphics_NanoVG_Metal_obj PRIVATE
@@ -226,6 +227,8 @@ if(NOT TARGET iPlug2_IGraphics_NanoVG_Metal_obj)
       ${IGRAPHICS_DIR}/Controls
       ${IGRAPHICS_DIR}/Platforms
       ${IGRAPHICS_DIR}/Drawing
+      ${IPLUG_DIR}
+      ${WDL_DIR}
     )
 
     target_compile_definitions(iPlug2_IGraphics_NanoVG_Metal_obj PRIVATE
@@ -265,6 +268,7 @@ if(NOT TARGET iPlug2::IGraphics::NanoVG::Metal)
     target_link_libraries(iPlug2::IGraphics::NanoVG::Metal INTERFACE
       "-framework Metal"
       "-framework MetalKit"
+      "-framework MetalPerformanceShaders"
       iPlug2::IGraphics
     )
   endif()

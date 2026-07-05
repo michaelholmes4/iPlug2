@@ -189,6 +189,16 @@ function(iplug_configure_vst3 target project_name)
         COMMAND ${CMAKE_COMMAND} -E copy "${VST3_PKGINFO_PATH}" "${PKGINFO_DEST}"
         COMMENT "Creating PkgInfo for ${project_name}.vst3"
       )
+
+      # Xcode re-signs bundles as part of its own build phases, but Ninja/Makefiles
+      # generators don't. Without this, the linker's ad-hoc signature on the raw
+      # executable is left declaring sealed resources that were never sealed, and
+      # hosts doing strict `codesign --verify` (e.g. Ableton Live) reject the
+      # bundle outright as "not a plugin".
+      add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND codesign --force --deep --sign - "${CMAKE_BINARY_DIR}/out/${project_name}.vst3"
+        COMMENT "Ad-hoc codesigning ${project_name}.vst3"
+      )
     endif()
   endif()
 endfunction()

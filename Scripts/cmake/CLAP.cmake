@@ -122,6 +122,15 @@ function(iplug_configure_clap target project_name)
         COMMAND ${CMAKE_COMMAND} -E copy "${IPLUG2_PKGINFO_FILE}" "${PKGINFO_PATH}"
         COMMENT "Creating PkgInfo for ${project_name}.clap"
       )
+
+      # Xcode re-signs bundles as part of its own build phases, but Ninja/Makefiles
+      # generators don't. Without this, the linker's ad-hoc signature on the raw
+      # executable is left declaring sealed resources that were never sealed, and
+      # strict codesign verification rejects the bundle.
+      add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND codesign --force --deep --sign - "${CMAKE_BINARY_DIR}/out/${project_name}.clap"
+        COMMENT "Ad-hoc codesigning ${project_name}.clap"
+      )
     endif()
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     # WASM/Emscripten: Use --no-entry linker option

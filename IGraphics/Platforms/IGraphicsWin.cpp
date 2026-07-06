@@ -23,6 +23,11 @@
 #include <wininet.h>
 #include <VersionHelpers.h>
 
+#if defined TREEDSP_FONT_DIAGNOSTICS
+#include <cstdio>
+#include "Logging/TreeLogger_C.h"
+#endif
+
 #if defined __clang__
 #undef CCSIZEOF_STRUCT
 #define CCSIZEOF_STRUCT(structname, member) (__builtin_offsetof(structname, member) + sizeof(((structname*)0)->member))
@@ -1435,11 +1440,16 @@ void IGraphicsWin::CreatePlatformTextEntry(int paramIdx, const IText& text, cons
 
   LOGFONTW lFont = { 0 };
   HFontHolder* hfontHolder = hfontStorage.Find(text.mFont);
-  GetObjectW(hfontHolder->mHFont, sizeof(LOGFONTW), &lFont);
-  lFont.lfHeight = text.mSize * scale;
-  mEditFont = CreateFontIndirectW(&lFont);
 
   assert(hfontHolder && "font not found - did you forget to load it?");
+
+  if (hfontHolder)
+    GetObjectW(hfontHolder->mHFont, sizeof(LOGFONTW), &lFont);
+  else // no GDI font cached (memory font fallback) - approximate with the face name and let GDI substitute
+    wcsncpy(lFont.lfFaceName, UTF8AsUTF16(text.mFont).Get(), LF_FACESIZE - 1);
+
+  lFont.lfHeight = text.mSize * scale;
+  mEditFont = CreateFontIndirectW(&lFont);
 
   mEditParam = paramIdx > kNoParameter ? GetDelegate()->GetParam(paramIdx) : nullptr;
   mEditText = text;
@@ -1935,8 +1945,13 @@ static HFONT GetHFont(const char* fontName, int weight, bool italic, bool underl
     GetTextFaceW(hdc, 64, selectedFontName);
     if (strcmp(UTF16AsUTF8(selectedFontName).Get(), fontName))
     {
+#if defined TREEDSP_FONT_DIAGNOSTICS
+      char msg[256];
+      snprintf(msg, sizeof(msg), "GetHFont: GDI mapped \"%s\" to \"%s\" - font not available to GDI in this process", fontName, UTF16AsUTF8(selectedFontName).Get());
+      tree_log_error(msg);
+#endif
       DeleteObject(font);
-      return nullptr;
+      font = nullptr;
     }
   }
 
@@ -2028,7 +2043,27 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
       fontStorage.Add(pFont.release(), fontID);
       return PlatformFontPtr(new Font(font, "", false));
     }
+
+#if defined TREEDSP_FONT_DIAGNOSTICS
+    char msg[256];
+    snprintf(msg, sizeof(msg), "LoadPlatformFont: GetHFont failed for \"%s\" (family \"%s\") - using in-memory font fallback", fontID, family.Get());
+    tree_log_error(msg);
+#endif
   }
+#if defined TREEDSP_FONT_DIAGNOSTICS
+  else
+  {
+    char msg[256];
+    snprintf(msg, sizeof(msg), "LoadPlatformFont: AddFontMemResourceEx failed for \"%s\" (error %lu, size %d) - using in-memory font fallback", fontID, GetLastError(), dataSize);
+    tree_log_error(msg);
+  }
+#endif
+
+  // GDI could not install/validate the font (e.g. GDI handle exhaustion or font-blocking
+  // policies). Drawing backends only need the raw bytes, so fall back to a memory font
+  // rather than failing the load outright.
+  if (pFontMem && resSize > 0)
+    return PlatformFontPtr(new MemoryWinFont(pFontMem, resSize));
 
   return nullptr;
 }
@@ -2038,6 +2073,10 @@ void IGraphicsWin::CachePlatformFont(const char* fontID, const PlatformFontPtr& 
   StaticStorage<HFontHolder>::Accessor hfontStorage(sHFontCache);
 
   HFONT hfont = font->GetDescriptor();
+
+  // Memory fallback fonts have no GDI descriptor - platform text entry will use a default font
+  if (!hfont)
+    return;
 
   if (!hfontStorage.Find(fontID))
     hfontStorage.Add(new HFontHolder(hfont), fontID);

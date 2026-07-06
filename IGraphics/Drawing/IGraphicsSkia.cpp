@@ -5,6 +5,8 @@
 
 #if defined TREEDSP_FONT_DIAGNOSTICS
 #include <cstdio>
+#include <set>
+#include <string>
 #include "Logging/TreeLogger_C.h"
 #endif
 
@@ -700,23 +702,39 @@ void IGraphicsSkia::PrepareAndMeasureText(const IText& text, const char* str, IR
 
   assert(pFont && "No font found - did you forget to load it?");
 
-  if (!pFont)
+  if (pFont)
   {
+    font.setTypeface(pFont->mTypeface);
+    font.setSize(text.mSize * pFont->mData->GetHeightEMRatio());
+  }
+  else
+  {
+    // Font missing from the cache (load failed?) - render with the system default typeface rather than crashing
 #if defined TREEDSP_FONT_DIAGNOSTICS
-    char msg[256];
-    snprintf(msg, sizeof(msg), "PrepareAndMeasureText: font \"%s\" not found in cache - skipping text to avoid crash", text.mFont);
-    tree_log_error(msg);
+    static std::set<std::string> sLoggedFonts;
+    if (sLoggedFonts.insert(text.mFont).second)
+    {
+      char msg[256];
+      snprintf(msg, sizeof(msg), "PrepareAndMeasureText: font \"%s\" not found in cache - using system default typeface", text.mFont);
+      tree_log_error(msg);
+    }
 #endif
-    x = r.L;
-    y = r.T;
-    return;
+    auto fallback = SkFontMgrRefDefault()->legacyMakeTypeface(nullptr, SkFontStyle());
+
+    if (!fallback)
+    {
+      x = r.L;
+      y = r.T;
+      return;
+    }
+
+    font.setTypeface(fallback);
+    font.setSize(text.mSize);
   }
 
-  font.setTypeface(pFont->mTypeface);
   font.setHinting(SkFontHinting::kSlight);
   font.setForceAutoHinting(false);
   font.setSubpixel(true);
-  font.setSize(text.mSize * pFont->mData->GetHeightEMRatio());
   
   // Draw / measure
   const double textWidth = font.measureText(str, strlen(str), SkTextEncoding::kUTF8, nullptr/* &bounds*/);

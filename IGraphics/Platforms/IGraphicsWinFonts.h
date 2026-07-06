@@ -12,6 +12,8 @@
 
 #include <windows.h>
 
+#include <vector>
+
 #include "IGraphicsPrivate.h"
 
 BEGIN_IPLUG_NAMESPACE
@@ -104,6 +106,28 @@ public:
 private:
   HFONT mFont;
   WDL_String mStyleName;
+};
+
+/** Fallback font used when GDI font installation fails (e.g. GDI handle exhaustion or
+ * font-blocking security policies). Returns the raw font bytes directly so drawing backends
+ * such as Skia can still create a typeface. Has no HFONT descriptor, so platform text entry
+ * falls back to a default GDI font. */
+class MemoryWinFont : public PlatformFont
+{
+public:
+  MemoryWinFont(const void* pData, int size)
+  : PlatformFont(false)
+  , mData(reinterpret_cast<const unsigned char*>(pData), reinterpret_cast<const unsigned char*>(pData) + size)
+  {}
+
+  IFontDataPtr GetFontData() override
+  {
+    const int faceIdx = GetFaceIdx(mData.data(), static_cast<int>(mData.size()), "");
+    return std::make_unique<IFontData>(mData.data(), static_cast<int>(mData.size()), faceIdx);
+  }
+
+private:
+  std::vector<unsigned char> mData;
 };
 
 END_IGRAPHICS_NAMESPACE

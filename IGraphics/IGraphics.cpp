@@ -2723,6 +2723,14 @@ void IGraphics::PathRect(const IRECT& bounds)
 
 void IGraphics::PathRoundRect(const IRECT& bounds, float ctl, float ctr, float cbl, float cbr)
 {
+  // A corner radius bigger than half the smallest side makes adjacent arcs
+  // overlap, which self-intersects the path and renders as a "star" artifact.
+  const float maxRadius = 0.5f * std::min(bounds.W(), bounds.H());
+  ctl = std::min(ctl, maxRadius);
+  ctr = std::min(ctr, maxRadius);
+  cbl = std::min(cbl, maxRadius);
+  cbr = std::min(cbr, maxRadius);
+
   if (ctl <= 0.f && ctr <= 0.f && cbl <= 0.f && cbr <= 0.f)
   {
     PathRect(bounds);

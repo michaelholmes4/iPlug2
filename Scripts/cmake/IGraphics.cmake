@@ -323,12 +323,15 @@ if(NOT TARGET iPlug2::IGraphics::Skia)
   )
 
   if(WIN32)
-    # download-prebuilt-libs.sh's IPLUG2_DEPS_WIN.zip puts libs at Build/win/x64/Release, not
-    # Build/src/skia/out/Release-x64 (that path matches Skia's own from-source GN build output,
-    # not this prebuilt package's layout). Mirrors the same Skia modules APPLE links below,
-    # translated to Windows .lib naming - if the linker still reports missing symbols, the zip
-    # also has freetype.lib/libpng.lib/zlib.lib available under the same directory to add here.
-    set(SKIA_LIB_PATH ${DEPS_DIR}/Build/win/x64/Release)
+    # download-prebuilt-libs.sh's IPLUG2_DEPS_WIN.zip puts libs at Build/win/x64/<Debug|Release>,
+    # not Build/src/skia/out/Release-x64 (that path matches Skia's own from-source GN build
+    # output, not this prebuilt package's layout). Mirrors the same Skia modules APPLE links
+    # below, translated to Windows .lib naming - if the linker still reports missing symbols, the
+    # zip also has freetype.lib/libpng.lib/zlib.lib available under the same directory to add
+    # here. $<CONFIG> (not a hardcoded "Release") matches this to the active build
+    # configuration - the zip ships a full Debug set too, and mixing configs here is exactly what
+    # causes MSVC LNK2038 RuntimeLibrary/_ITERATOR_DEBUG_LEVEL mismatches against our own code.
+    set(SKIA_LIB_PATH ${DEPS_DIR}/Build/win/x64/$<CONFIG>)
     target_link_libraries(iPlug2::IGraphics::Skia INTERFACE
       ${SKIA_LIB_PATH}/skia.lib
       ${SKIA_LIB_PATH}/svg.lib

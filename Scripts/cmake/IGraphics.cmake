@@ -374,6 +374,14 @@ if(NOT TARGET iPlug2::IGraphics::Skia::GL3)
     )
   endif()
 
+  if(WIN32)
+    # IGraphicsWin.cpp unity-builds glad.c regardless of backend, so Skia's
+    # GL3 target needs the same glad include path NanoVG::GL3 gets.
+    target_link_libraries(iPlug2::IGraphics::Skia::GL3 INTERFACE
+      iPlug2::IGraphics::GL3
+    )
+  endif()
+
   target_link_libraries(iPlug2::IGraphics::Skia::GL3 INTERFACE
     iPlug2::IGraphics::Skia
   )

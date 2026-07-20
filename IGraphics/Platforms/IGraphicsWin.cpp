@@ -2041,7 +2041,10 @@ PlatformFontPtr IGraphicsWin::LoadPlatformFont(const char* fontID, void* pData, 
     if (font)
     {
       fontStorage.Add(pFont.release(), fontID);
-      return PlatformFontPtr(new Font(font, "", false));
+      // Render from the resource bytes we just installed, keeping the HFONT only as the
+      // text-entry descriptor. Fetching the data back out of GDI by face name can return a
+      // different font that shares the name (e.g. a TTC registered by the host)
+      return PlatformFontPtr(new MemoryWinFont(pFontMem, resSize, font));
     }
 
 #if defined TREEDSP_FONT_DIAGNOSTICS

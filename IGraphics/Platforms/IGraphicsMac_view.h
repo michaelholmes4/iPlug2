@@ -150,6 +150,12 @@ using namespace igraphics;
 - (void) drawRect: (NSRect) bounds;
 - (void) render;
 - (void) killTimer;
+#ifdef IGRAPHICS_CVDISPLAYLINK
+- (BOOL) setupDisplayLink;
+- (void) teardownDisplayLink;
+- (void) updateDisplayLinkForCurrentScreen;
+- (void) windowChangedScreen: (NSNotification*) pNotification;
+#endif
 - (void) onTimer: (NSTimer*) pTimer;
 - (void) viewDidChangeEffectiveAppearance;
 //mouse

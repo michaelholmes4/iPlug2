@@ -538,53 +538,133 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink, const CVTimeSt
 - (void) setTimer
 {
 #ifdef IGRAPHICS_CVDISPLAYLINK
+  if ([self setupDisplayLink])
+    return;
+
+  // Fall through to the NSTimer below. Worse frame pacing, but a view with no
+  // render tick at all would simply never redraw.
+  DBGMSG("Display link unavailable, falling back to NSTimer pacing\n");
+#endif
+
+  double sec = 1.0 / (double) mGraphics->FPS();
+  mTimer = [NSTimer timerWithTimeInterval:sec target:self selector:@selector(onTimer:) userInfo:nil repeats:YES];
+  [[NSRunLoop currentRunLoop] addTimer: mTimer forMode: (NSString*) kCFRunLoopCommonModes];
+}
+
+#ifdef IGRAPHICS_CVDISPLAYLINK
+// Drives rendering from the display's vblank rather than a wall-clock timer.
+// Returns NO if the link could not be set up, leaving nothing behind, so the
+// caller can fall back to the NSTimer path.
+- (BOOL) setupDisplayLink
+{
   mDisplaySource = dispatch_source_create(DISPATCH_SOURCE_TYPE_DATA_ADD, 0, 0, dispatch_get_main_queue());
   dispatch_source_set_event_handler(mDisplaySource, ^(){
     [self render];
   });
   dispatch_resume(mDisplaySource);
 
-  CVReturn cvReturn;
+  CVReturn cvReturn = CVDisplayLinkCreateWithActiveCGDisplays(&mDisplayLink);
 
-  cvReturn = CVDisplayLinkCreateWithActiveCGDisplays(&mDisplayLink);
-  
-  assert(cvReturn == kCVReturnSuccess);
+  if (cvReturn == kCVReturnSuccess && mDisplayLink)
+  {
+    cvReturn = CVDisplayLinkSetOutputCallback(mDisplayLink, &displayLinkCallback, (void*) mDisplaySource);
 
-  cvReturn = CVDisplayLinkSetOutputCallback(mDisplayLink, &displayLinkCallback, (void*) mDisplaySource);
-  assert(cvReturn == kCVReturnSuccess);
+    if (cvReturn != kCVReturnSuccess)
+      DBGMSG("CVDisplayLinkSetOutputCallback() failed (%d)\n", cvReturn);
+  }
+  else
+  {
+    DBGMSG("CVDisplayLinkCreateWithActiveCGDisplays() failed (%d)\n", cvReturn);
+    mDisplayLink = nil;
+  }
+
+  if (cvReturn != kCVReturnSuccess)
+  {
+    [self teardownDisplayLink];
+    return NO;
+  }
 
   #if defined IGRAPHICS_GL2 || defined IGRAPHICS_GL3
   CGLContextObj cglContext = [[self openGLContext] CGLContextObj];
   CGLPixelFormatObj cglPixelFormat = [[self pixelFormat] CGLPixelFormatObj];
   CVDisplayLinkSetCurrentCGDisplayFromOpenGLContext(mDisplayLink, cglContext, cglPixelFormat);
   #endif
-  
-  CGDirectDisplayID viewDisplayID =
-      (CGDirectDisplayID) [self.window.screen.deviceDescription[@"NSScreenNumber"] unsignedIntegerValue];;
 
-  cvReturn = CVDisplayLinkSetCurrentCGDisplay(mDisplayLink, viewDisplayID);
-
-  assert(cvReturn == kCVReturnSuccess);
-  
+  // N.B. deliberately NOT binding to a specific display here. setTimer runs from
+  // initWithIGraphics, before the view has been added to a window, so
+  // self.window.screen is nil and the display ID would resolve to 0 - which
+  // CVDisplayLinkSetCurrentCGDisplay rejects. The link starts on the active
+  // display set and is re-bound to the window's actual screen by
+  // updateDisplayLinkForCurrentScreen, called from viewDidMoveToWindow and again
+  // whenever the window is dragged to another display.
   CVDisplayLinkStart(mDisplayLink);
-#else
-  double sec = 1.0 / (double) mGraphics->FPS();
-  mTimer = [NSTimer timerWithTimeInterval:sec target:self selector:@selector(onTimer:) userInfo:nil repeats:YES];
-  [[NSRunLoop currentRunLoop] addTimer: mTimer forMode: (NSString*) kCFRunLoopCommonModes];
-#endif
+
+  return YES;
 }
+
+// Ordered deliberately: CVDisplayLinkStop blocks until any in-flight callback
+// returns, so the dispatch source it posts to stays valid until after the link
+// has fully stopped.
+- (void) teardownDisplayLink
+{
+  if (mDisplayLink)
+  {
+    CVDisplayLinkStop(mDisplayLink);
+    CVDisplayLinkRelease(mDisplayLink);
+    mDisplayLink = nil;
+  }
+
+  if (mDisplaySource)
+  {
+    dispatch_source_cancel(mDisplaySource);
+    dispatch_release(mDisplaySource);
+    mDisplaySource = nil;
+  }
+}
+
+// Points the display link at whichever display the view's window is currently
+// on, so the render tick is paced by that display's vblank. Without this the
+// link keeps ticking at whatever the active-display set implies, which is wrong
+// as soon as the plugin window is moved to a screen with a different refresh
+// rate. Safe to call at any time - it no-ops until there is both a link and a
+// window with a resolvable screen.
+- (void) updateDisplayLinkForCurrentScreen
+{
+  if (!mDisplayLink)
+    return;
+
+  NSNumber* pScreenNumber = [[[self window] screen] deviceDescription][@"NSScreenNumber"];
+
+  if (!pScreenNumber)
+    return;
+
+  CGDirectDisplayID displayID = (CGDirectDisplayID) [pScreenNumber unsignedIntegerValue];
+
+  if (displayID == kCGNullDirectDisplay || displayID == CVDisplayLinkGetCurrentCGDisplay(mDisplayLink))
+    return;
+
+  CVReturn cvReturn = CVDisplayLinkSetCurrentCGDisplay(mDisplayLink, displayID);
+
+  if (cvReturn != kCVReturnSuccess)
+    DBGMSG("CVDisplayLinkSetCurrentCGDisplay() failed (%d)\n", cvReturn);
+}
+
+- (void) windowChangedScreen: (NSNotification*) pNotification
+{
+  [self updateDisplayLinkForCurrentScreen];
+}
+#endif
 
 - (void) killTimer
 {
 #ifdef IGRAPHICS_CVDISPLAYLINK
-  CVDisplayLinkStop(mDisplayLink);
-  dispatch_source_cancel(mDisplaySource);
-  CVDisplayLinkRelease(mDisplayLink);
-  mDisplayLink = nil;
-#else
+  [self teardownDisplayLink];
+#endif
+
+  // Also unconditionally here, not in an #else: with IGRAPHICS_CVDISPLAYLINK on,
+  // setTimer still falls back to an NSTimer if the display link failed to start.
   [mTimer invalidate];
   mTimer = nullptr;
-#endif
 }
 
 - (void) dealloc
@@ -641,7 +721,22 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink, const CVTimeSt
 
     if (mGraphics)
       mGraphics->SetScreenScale(newScale);
-    
+
+    #ifdef IGRAPHICS_CVDISPLAYLINK
+    // Now that there is a window, the display link can be bound to the screen
+    // it is actually on (see updateDisplayLinkForCurrentScreen). Re-registered
+    // rather than added blindly: viewDidMoveToWindow fires again on every window
+    // change, and duplicate observers would deliver duplicate notifications.
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:NSWindowDidChangeScreenNotification
+                                                  object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(windowChangedScreen:)
+                                                 name:NSWindowDidChangeScreenNotification
+                                               object:pWindow];
+    [self updateDisplayLinkForCurrentScreen];
+    #endif
+
     #if defined IGRAPHICS_METAL || defined IGRAPHICS_GLES2 || defined IGRAPHICS_GLES3
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(frameDidChange:)

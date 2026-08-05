@@ -1180,6 +1180,19 @@ public:
   /** @return An EUIResizerMode Representing whether the graphics context should scale or be resized, e.g. when dragging a corner resizer */
   EUIResizerMode GetResizerMode() const { return mGUISizeMode; }
 
+  /** Begins a drag-resize gesture. Subsequent mouse drags are routed to
+   * OnDragResize() at the IGraphics level rather than to whichever control has
+   * mouse capture, which is what lets a resize survive Resize()'s own call to
+   * ReleaseMouseCapture(). Called by ICornerResizerControl, and by any other
+   * control that offers a drag-resize affordance. Ended automatically on mouse up. */
+  void StartDragResize() { mResizingInProcess = true; }
+
+  /** Set whether a drag-resize gesture should scale or resize the graphics context. AttachCornerResizer() sets this
+   * once at attach time; this setter lets a UI with more than one drag-resize affordance (e.g. a corner resizer that
+   * scales plus a panel-edge grip that resizes) pick the mode per gesture, in the handler that calls StartDragResize().
+   * @param mode The mode subsequent drag-resize gestures should use */
+  void SetResizerMode(EUIResizerMode mode) { mGUISizeMode = mode; }
+
   /** @return true if resizing is in process */
   bool GetResizingInProcess() const { return mResizingInProcess; }
 
@@ -1287,9 +1300,6 @@ private:
    * @param isContext Determines if the menu is a contextual menu or not
    * @param valIdx The value index for the control value that the prompt relates to */
   void DoCreatePopupMenu(IControl& control, IPopupMenu& menu, const IRECT& bounds, int valIdx, bool isContext);
-  
-  /** Called by ICornerResizer when drag resize commences */
-  void StartDragResize() { mResizingInProcess = true; }
   
   /** Called when drag resize ends */
   void EndDragResize();

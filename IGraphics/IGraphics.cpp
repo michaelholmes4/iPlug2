@@ -116,6 +116,11 @@ void IGraphics::Resize(int w, int h, float scale, bool needsPlatformResize)
   
   if(mLayoutOnResize)
     GetDelegate()->LayoutUI(this);
+
+  // Last, after any relayout above: the platform view has already changed size, so
+  // anything short of presenting the new frame here leaves the previous one on screen
+  // until the next render tick, where the compositor has to make it fit the new bounds.
+  PlatformDrawImmediately();
 }
 
 void IGraphics::SetLayoutOnResize(bool layoutOnResize)

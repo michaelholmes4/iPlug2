@@ -1281,7 +1281,11 @@ private:
   
   /** Called to update the drawing surface after a resize */
   virtual void DrawResize() {}
-  
+
+  /** Called at the end of a resize to present the newly laid-out frame immediately,
+   * rather than leaving the previous one on screen until the next render tick */
+  virtual void PlatformDrawImmediately() {}
+
   /** Draw a region of the graphics (redrawing all contained items)
    * @param bounds The rectangular region to redraw
    * @param scale The current draw scale */

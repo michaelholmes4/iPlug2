@@ -10,6 +10,7 @@
 
 #include "IGraphicsMac.h"
 #import "IGraphicsMac_view.h"
+#import <QuartzCore/CATransaction.h>
 
 #if defined IGRAPHICS_GLES2 || defined IGRAPHICS_GLES3
 #import <libEGL/libEGL.h>
@@ -167,14 +168,34 @@ void IGraphicsMac::PlatformResize(bool parentHasResized)
   {
     NSSize size = { static_cast<CGFloat>(WindowWidth()), static_cast<CGFloat>(WindowHeight()) };
 
+    // The NSAnimationContext grouping only covers animator-proxy animations, not the
+    // implicit CALayer actions setFrameSize: triggers on the backing layer's bounds and
+    // position - those would animate the resize over the default 0.25s. setFrameSize:
+    // posts NSViewFrameDidChangeNotification synchronously, so -frameDidChange:'s
+    // setDrawableSize: lands inside this transaction too.
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+
     [NSAnimationContext beginGrouping]; // Prevent animated resizing
     [[NSAnimationContext currentContext] setDuration:0.0];
     [(IGRAPHICS_VIEW*) mView setFrameSize: size ];
-    
+
     [NSAnimationContext endGrouping];
+
+    [CATransaction commit];
   }
     
   UpdateTooltips();
+}
+
+void IGraphicsMac::PlatformDrawImmediately()
+{
+  // Guarded on the window, not just the view: OpenWindow creates the view and resizes it
+  // before addSubview:, and -[CAMetalLayer nextDrawable] on a layer with no window has
+  // nothing to hand back. -render is the display link's own entry point, so it already
+  // checks IsDirty and takes the GL context itself.
+  if (mView && [(IGRAPHICS_VIEW*) mView window])
+    [(IGRAPHICS_VIEW*) mView render];
 }
 
 void IGraphicsMac::PointToScreen(float& x, float& y) const

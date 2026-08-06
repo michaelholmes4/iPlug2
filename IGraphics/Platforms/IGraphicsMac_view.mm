@@ -405,6 +405,19 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
   self.wantsLayer = YES;
   self.layer.opaque = YES;
   self.layerContentsRedrawPolicy = NSViewLayerContentsRedrawDuringViewResize;
+
+  // AppKit derives layer.contentsGravity from layerContentsPlacement and re-applies it,
+  // so setting contentsGravity directly does not stick. The default placement
+  // (ScaleAxesIndependently -> kCAGravityResize) makes CoreAnimation stretch the last
+  // presented drawable to the new bounds until the next one is presented, which reads as
+  // the whole UI warping on every resize. TopLeft pins it instead.
+  self.layerContentsPlacement = NSViewLayerContentsPlacementTopLeft;
+
+  // self.layer.opaque is YES but nothing defines what fills the uncovered band when the
+  // window grows - visible for at most one frame now that the placement above no longer
+  // stretches the old frame to cover it.
+  self.layer.backgroundColor = CGColorGetConstantColor(kCGColorBlack);
+
   [self registerForDraggedTypes:[NSArray arrayWithObjects: NSFilenamesPboardType, nil]];
   
   #if defined IGRAPHICS_METAL || defined IGRAPHICS_GLES2 || defined IGRAPHICS_GLES3

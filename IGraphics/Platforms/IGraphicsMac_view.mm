@@ -535,12 +535,22 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
 }
 #endif
 
+// Called on the display link's own thread, so it does no work beyond nudging the
+// main run loop. Repeated signals before the source next gets to run coalesce
+// into a single perform, so a stall never queues up a burst of catch-up frames.
 static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink, const CVTimeStamp* now, const CVTimeStamp* outputTime, CVOptionFlags flagsIn, CVOptionFlags* flagsOut, void* displayLinkContext)
 {
-  dispatch_source_t source = (dispatch_source_t) displayLinkContext;
-  dispatch_source_merge_data(source, 1);
-  
+  CFRunLoopSourceRef source = (CFRunLoopSourceRef) displayLinkContext;
+  CFRunLoopSourceSignal(source);
+  CFRunLoopWakeUp(CFRunLoopGetMain());
+
   return kCVReturnSuccess;
+}
+
+// Runs on the main thread, driven by the run loop rather than the main queue.
+static void displaySourcePerform(void* info)
+{
+  [((IGRAPHICS_VIEW*) info) render];
 }
 
 - (void) onTimer: (NSTimer*) pTimer
@@ -570,11 +580,22 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink, const CVTimeSt
 // caller can fall back to the NSTimer path.
 - (BOOL) setupDisplayLink
 {
-  mDisplaySource = dispatch_source_create(DISPATCH_SOURCE_TYPE_DATA_ADD, 0, 0, dispatch_get_main_queue());
-  dispatch_source_set_event_handler(mDisplaySource, ^(){
-    [self render];
-  });
-  dispatch_resume(mDisplaySource);
+  // N.B. a run loop source, NOT a main queue dispatch source. The two look
+  // interchangeable for posting work to the main thread, but they behave
+  // differently inside a nested run loop, and a platform menu is exactly that:
+  // CreatePlatformPopupMenu dispatches to the main queue and runs the menu from
+  // inside that block, so for as long as the menu is tracking, the main queue is
+  // occupied and CFRunLoop will not re-enter it. A dispatch source hung off the
+  // main queue is therefore starved for the whole lifetime of every menu, and
+  // the UI visibly freezes until it closes. A run loop source registered in the
+  // common modes is serviced by the menu's nested loop like any other, which is
+  // also how the NSTimer this pacing replaced used to survive menus.
+  CFRunLoopSourceContext sourceCtx = {};
+  sourceCtx.info = self;
+  sourceCtx.perform = displaySourcePerform;
+
+  mDisplaySource = CFRunLoopSourceCreate(kCFAllocatorDefault, 0, &sourceCtx);
+  CFRunLoopAddSource(CFRunLoopGetMain(), mDisplaySource, kCFRunLoopCommonModes);
 
   CVReturn cvReturn = CVDisplayLinkCreateWithActiveCGDisplays(&mDisplayLink);
 
@@ -616,7 +637,7 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink, const CVTimeSt
 }
 
 // Ordered deliberately: CVDisplayLinkStop blocks until any in-flight callback
-// returns, so the dispatch source it posts to stays valid until after the link
+// returns, so the run loop source it signals stays valid until after the link
 // has fully stopped.
 - (void) teardownDisplayLink
 {
@@ -629,8 +650,8 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink, const CVTimeSt
 
   if (mDisplaySource)
   {
-    dispatch_source_cancel(mDisplaySource);
-    dispatch_release(mDisplaySource);
+    CFRunLoopSourceInvalidate(mDisplaySource); // also removes it from the run loop
+    CFRelease(mDisplaySource);
     mDisplaySource = nil;
   }
 }

@@ -121,7 +121,10 @@ using namespace igraphics;
 @interface IGRAPHICS_VIEW : VIEW_BASE <NSTextFieldDelegate, NSDraggingSource/*, WKScriptMessageHandler*/>
 {
   CVDisplayLinkRef mDisplayLink;
-  dispatch_source_t mDisplaySource;
+  // Deliberately a run loop source rather than a main queue dispatch source:
+  // see setupDisplayLink for why the distinction decides whether the UI keeps
+  // rendering while a platform menu is open.
+  CFRunLoopSourceRef mDisplaySource;
   NSTimer* mTimer;
   
   NSTrackingArea* mTrackingArea;

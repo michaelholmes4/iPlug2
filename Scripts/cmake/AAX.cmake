@@ -121,6 +121,23 @@ endif()
 function(iplug_configure_aax target project_name)
   target_link_libraries(${target} PUBLIC iPlug2::AAX)
 
+  # AAX_Export MUST be linked directly onto the plugin target, not inherited
+  # through iPlug2::AAX. It is an OBJECT library (see the AAX SDK's own
+  # CMakeLists), and CMake only pulls an object library's object files in from
+  # a DIRECT link dependency - they are not propagated transitively through an
+  # intermediate INTERFACE library like iPlug2::AAX. Getting this wrong is
+  # silent: everything compiles and links, but AAX_Exports.cpp never makes it
+  # into the binary, so the bundle ends up with no ACFRegisterPlugin /
+  # ACFGetClassFactory / ACFStartup exports - the symbols the host looks up by
+  # name - and Pro Tools and the AAX validator both reject it with nothing more
+  # descriptive than "Plug-in loading failed". Verify with:
+  #   dyld_info -exports <bundle>/Contents/MacOS/<name> | grep ACFRegisterPlugin
+  # This mirrors what the SDK's own aax_plugin() helper does
+  # (AAX_SDK/cmake/AAX_SDKFunctions.cmake).
+  if(TARGET AAX_SDK::AAX_Export)
+    target_link_libraries(${target} PRIVATE AAX_SDK::AAX_Export)
+  endif()
+
   if(WIN32)
     # Windows: AAX bundle structure is ProjectName.aaxplugin/Contents/x64/ProjectName.aaxplugin
     # Determine architecture (64-bit only)

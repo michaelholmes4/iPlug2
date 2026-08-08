@@ -554,6 +554,39 @@ AAX_Result IPlugAAX::NotificationReceived (AAX_CTypeID type, const void* pData, 
       if (pData)
         mTrackName.Set(static_cast<const AAX_IString*>(pData)->Get());
       break;
+    case AAX_eNotificationEvent_TrackUIDChanged:
+      // AAX_Enums.h documents this as "not currently sent" - Pro Tools only
+      // ever delivers TrackNameChanged today. Handled regardless so a host
+      // that starts sending it needs no change here, and so that anything
+      // grouping instances by track (see GetTrackUID) gets a rename-stable,
+      // genuinely unique key for free rather than falling back to the name.
+      //
+      // The payload is 16 RAW BYTES, not a string - hex-encoding it rather
+      // than handing it to WDL_String::Set, which would stop at the first
+      // zero byte and has no way to carry the rest as text.
+      if (pData && size >= 16)
+      {
+        static const char* kHexDigits = "0123456789abcdef";
+        const uint8_t* pUID = static_cast<const uint8_t*>(pData);
+        char hex[33];
+
+        for (int i = 0; i < 16; i++)
+        {
+          hex[i * 2] = kHexDigits[pUID[i] >> 4];
+          hex[i * 2 + 1] = kHexDigits[pUID[i] & 0x0F];
+        }
+
+        hex[32] = '\0';
+        mTrackUID.Set(hex);
+      }
+      break;
+    case AAX_eNotificationEvent_TrackPositionChanged:
+      // Also "not currently sent" per AAX_Enums.h - see the note above. Size
+      // checked rather than assumed, since a host sending a payload we don't
+      // expect would otherwise be read as an int32_t off the end of it.
+      if (pData && size >= sizeof(int32_t))
+        mTrackIndex = static_cast<int>(*static_cast<const int32_t*>(pData));
+      break;
 //    case AAX_eNotificationEvent_SessionBeingOpened:
 //      break;
 //    case AAX_eNotificationEvent_PresetOpened:

@@ -94,7 +94,17 @@ public:
   
   /** Get the name of the track that the plug-in is inserted on */
   virtual void GetTrackName(WDL_String& str) override { str = mTrackName; };
-  
+
+  /** Get the host-assigned unique ID of the track that the plug-in is inserted on, as a
+   * lowercase hex string. Empty unless the host sends AAX_eNotificationEvent_TrackUIDChanged,
+   * which AAX_Enums.h documents as "not currently sent" - see NotificationReceived(). */
+  virtual void GetTrackUID(WDL_String& str) override { str = mTrackUID; };
+
+  /** Get the zero-indexed position of this plug-in's track, or -1 if unknown. Only ever set if
+   * the host sends AAX_eNotificationEvent_TrackPositionChanged, which AAX_Enums.h documents as
+   * "not currently sent" - see NotificationReceived(). */
+  virtual int GetTrackIndex() override { return mTrackIndex; };
+
   //IPlug Processor Overrides
   void SetLatency(int samples) override;
   bool SendMidiMsg(const IMidiMsg& msg) override;
@@ -135,6 +145,8 @@ private:
   IMidiQueue mMidiOutputQueue;
   int mMaxNChansForMainInputBus = 0;
   WDL_String mTrackName;
+  WDL_String mTrackUID;
+  int mTrackIndex = -1;
 };
 
 IPlugAAX* MakePlug(const InstanceInfo& info);

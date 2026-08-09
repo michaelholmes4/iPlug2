@@ -443,6 +443,11 @@ void IGraphicsSkia::OnViewDestroyed()
   RemoveAllControls();
 
 #if defined IGRAPHICS_GL
+  // Abandon rather than let the destructor flush/sync with the GPU: some hosts tear down
+  // the plugin's HWND/DC before or during this call, and a submit-to-GPU sync in that state
+  // can block forever in the driver (observed hang in GrGLGpu::onSubmitToGpu on window close).
+  if (mGrContext)
+    mGrContext->abandonContext();
   mSurface = nullptr;
   mScreenSurface = nullptr;
   mGrContext = nullptr;

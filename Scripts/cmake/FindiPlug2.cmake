@@ -230,6 +230,23 @@ function(iplug_configure_target target target_type project_name)
     iplug_deploy_target(${target} ${target_type} ${project_name})
   endif()
 
+  # Skia's SkParagraph loads icudtl.dat from disk next to the binary at runtime
+  # (SkLoadICU) rather than embedding it. Without it, SkUnicodes::ICU::Make()
+  # returns null, and the first multi-line text draw hits
+  # SkASSERT_RELEASE(fUnicode) in ParagraphBuilderImpl::Build(), which aborts the
+  # whole process instead of failing gracefully.
+  if(WIN32 AND IGRAPHICS_BACKEND STREQUAL "SKIA" AND ${target_type} IN_LIST DEPLOYABLE_TYPES)
+    set(_icudtl_src "${DEPS_DIR}/Build/win/bin/icudtl.dat")
+    if(EXISTS "${_icudtl_src}")
+      add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_icudtl_src}" "$<TARGET_FILE_DIR:${target}>"
+        COMMENT "Copying icudtl.dat next to ${target}"
+      )
+    else()
+      message(WARNING "icudtl.dat not found at ${_icudtl_src} - Skia multi-line text will abort at runtime")
+    endif()
+  endif()
+
   # Debuggable plugin types
   set(DEBUGGABLE_TYPES "")
   if(IPLUG2_VST2_SUPPORTED)

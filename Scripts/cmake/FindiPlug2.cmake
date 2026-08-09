@@ -226,15 +226,15 @@ function(iplug_configure_target target target_type project_name)
 
   # Auto-deploy main plugin formats (skip AUv3 intermediate targets)
   set(DEPLOYABLE_TYPES APP VST2 VST3 CLAP AUv2 AAX)
-  if(${target_type} IN_LIST DEPLOYABLE_TYPES)
-    iplug_deploy_target(${target} ${target_type} ${project_name})
-  endif()
 
   # Skia's SkParagraph loads icudtl.dat from disk next to the binary at runtime
   # (SkLoadICU) rather than embedding it. Without it, SkUnicodes::ICU::Make()
   # returns null, and the first multi-line text draw hits
   # SkASSERT_RELEASE(fUnicode) in ParagraphBuilderImpl::Build(), which aborts the
   # whole process instead of failing gracefully.
+  # Must run before the iplug_deploy_target() POST_BUILD copy below: POST_BUILD
+  # commands execute in registration order, so deploying first would copy the
+  # bundle before icudtl.dat lands next to the binary.
   if(WIN32 AND IGRAPHICS_BACKEND STREQUAL "SKIA" AND ${target_type} IN_LIST DEPLOYABLE_TYPES)
     set(_icudtl_src "${DEPS_DIR}/Build/win/bin/icudtl.dat")
     if(EXISTS "${_icudtl_src}")
@@ -245,6 +245,10 @@ function(iplug_configure_target target target_type project_name)
     else()
       message(WARNING "icudtl.dat not found at ${_icudtl_src} - Skia multi-line text will abort at runtime")
     endif()
+  endif()
+
+  if(${target_type} IN_LIST DEPLOYABLE_TYPES)
+    iplug_deploy_target(${target} ${target_type} ${project_name})
   endif()
 
   # Debuggable plugin types

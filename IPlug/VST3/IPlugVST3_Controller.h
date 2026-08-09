@@ -34,6 +34,8 @@ BEGIN_IPLUG_NAMESPACE
 class IPlugVST3Controller : public Steinberg::Vst::EditControllerEx1
                           , public Steinberg::Vst::IMidiMapping
                           , public Steinberg::Vst::ChannelContext::IInfoListener
+                          , public Presonus::IContextInfoHandler
+                          , public Presonus::IContextInfoHandler2
                           , public IPlugAPIBase
                           , public IPlugVST3ControllerBase
 {
@@ -54,6 +56,7 @@ public:
   Steinberg::tresult PLUGIN_API setComponentState(Steinberg::IBStream* pState) override; // receives the processor's state
   Steinberg::tresult PLUGIN_API setState(Steinberg::IBStream* pState) override;
   Steinberg::tresult PLUGIN_API getState(Steinberg::IBStream* pState) override;
+  Steinberg::tresult PLUGIN_API setComponentHandler(Steinberg::Vst::IComponentHandler* handler) override;
   
   Steinberg::Vst::ParamValue PLUGIN_API getParamNormalized (Steinberg::Vst::ParamID tag) override;
   Steinberg::tresult PLUGIN_API setParamNormalized(Steinberg::Vst::ParamID tag, Steinberg::Vst::ParamValue value) override;
@@ -100,11 +103,17 @@ public:
   /** Get the namespace index of the track that the plug-in is inserted on */
   int GetTrackNamespaceIndex() override { return mChannelNamespaceIndex; };
 
+  // Presonus::IContextInfoHandler / IContextInfoHandler2 (Studio One)
+  void PLUGIN_API notifyContextInfoChange() override { PresonusContextInfoChanged(nullptr); }
+  void PLUGIN_API notifyContextInfoChange(Steinberg::FIDString id) override { PresonusContextInfoChanged(id); }
+
   // Interface
   OBJ_METHODS(IPlugVST3Controller, EditControllerEx1)
   DEFINE_INTERFACES
     DEF_INTERFACE(IMidiMapping)
     DEF_INTERFACE(IInfoListener)
+    DEF_INTERFACE(IContextInfoHandler)
+    DEF_INTERFACE(IContextInfoHandler2)
   END_DEFINE_INTERFACES(EditControllerEx1)
   REFCOUNT_METHODS(EditControllerEx1)
   

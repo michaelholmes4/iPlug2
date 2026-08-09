@@ -169,6 +169,13 @@ tresult PLUGIN_API IPlugVST3::setComponentState(IBStream* pState)
   return kResultOk;
 }
 
+tresult PLUGIN_API IPlugVST3::setComponentHandler(IComponentHandler* handler)
+{
+  tresult result = SingleComponentEffect::setComponentHandler(handler);
+  IPlugVST3ControllerBase::SetupPresonusContextInfo(handler);
+  return result;
+}
+
 #pragma mark IMidiMapping overrides
 
 tresult PLUGIN_API IPlugVST3::getMidiControllerAssignment(int32 busIndex, int16 midiChannel, CtrlNumber midiCCNumber, ParamID& tag)

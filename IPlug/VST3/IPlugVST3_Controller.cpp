@@ -85,6 +85,13 @@ tresult PLUGIN_API IPlugVST3Controller::getState(IBStream* pState)
   return kResultOk;
 }
 
+tresult PLUGIN_API IPlugVST3Controller::setComponentHandler(IComponentHandler* handler)
+{
+  tresult result = EditControllerEx1::setComponentHandler(handler);
+  IPlugVST3ControllerBase::SetupPresonusContextInfo(handler);
+  return result;
+}
+
 ParamValue PLUGIN_API IPlugVST3Controller::getParamNormalized(ParamID tag)
 {
   return IPlugVST3ControllerBase::GetParamNormalized(tag);

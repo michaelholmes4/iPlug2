@@ -36,6 +36,7 @@ if(NOT TARGET iPlug2::VST3)
   set(VST3_IPLUG_SRC
     ${IPLUG_DIR}/VST3/IPlugVST3.cpp
     ${IPLUG_DIR}/VST3/IPlugVST3_ProcessorBase.cpp
+    ${IPLUG_DIR}/VST3/PSLExtensions/ipslcontextinfo.cpp
   )
 
   # VST3 SDK base sources

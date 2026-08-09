@@ -10,9 +10,12 @@
 
 #pragma once
 
+#include <cstring>
+
 #include "pluginterfaces/base/ibstream.h"
 #include "public.sdk/source/vst/vsteditcontroller.h"
 #include "pluginterfaces/vst/ivstchannelcontextinfo.h"
+#include "PSLExtensions/ipslcontextinfo.h"
 
 #include "IPlugAPIBase.h"
 #include "IPlugVST3_Parameter.h"
@@ -332,7 +335,75 @@ public:
 
     return false;
   }
-  
+
+  // Presonus::IContextInfoProvider (Studio One) - queried from the IComponentHandler the host
+  // gives us via setComponentHandler(), not the ChannelContext::IInfoListener path above, since
+  // Studio One implements this extension instead of the stock VST3 IInfoListener.
+  void SetupPresonusContextInfo(Steinberg::Vst::IComponentHandler* handler)
+  {
+    mPresonusContextInfoProvider = Steinberg::FUnknownPtr<Presonus::IContextInfoProvider>(handler);
+
+    if (mPresonusContextInfoProvider)
+      PresonusContextInfoChanged(nullptr);
+  }
+
+  // id is one of the Presonus::ContextInfo::kXxx attribute ids, or nullptr to refresh everything
+  // (the argument-less Presonus::IContextInfoHandler::notifyContextInfoChange() case, and our own
+  // initial pull in SetupPresonusContextInfo() above).
+  void PresonusContextInfoChanged(Steinberg::FIDString id)
+  {
+    using namespace Steinberg;
+    using namespace Presonus;
+
+    if (!mPresonusContextInfoProvider)
+      return;
+
+    const bool all = (id == nullptr);
+
+    if (all || !strcmp(id, ContextInfo::kName))
+    {
+      Vst::TChar buf[128] = {0};
+      if (mPresonusContextInfoProvider->getContextInfoString(buf, 128, ContextInfo::kName) == kResultTrue)
+      {
+        Steinberg::String str(buf);
+        str.toMultiByte(kCP_Utf8);
+        mChannelName.Set(str);
+      }
+    }
+
+    if (all || !strcmp(id, ContextInfo::kID))
+    {
+      Vst::TChar buf[128] = {0};
+      if (mPresonusContextInfoProvider->getContextInfoString(buf, 128, ContextInfo::kID) == kResultTrue)
+      {
+        Steinberg::String str(buf);
+        str.toMultiByte(kCP_Utf8);
+        mChannelUID.Set(str);
+      }
+    }
+
+    if (all || !strcmp(id, ContextInfo::kIndex))
+    {
+      int32 index = 0;
+      if (mPresonusContextInfoProvider->getContextInfoValue(index, ContextInfo::kIndex) == kResultTrue)
+        mChannelIndex = static_cast<int>(index);
+    }
+
+    if (all || !strcmp(id, ContextInfo::kColor))
+    {
+      int32 color = 0;
+      if (mPresonusContextInfoProvider->getContextInfoValue(color, ContextInfo::kColor) == kResultTrue)
+      {
+        // ContextInfo::kColor is ABGR (red in the lowest byte); GetTrackColor() expects the same
+        // packing setChannelContextInfos() above uses, i.e. red at bits 16-23.
+        const uint32 c = static_cast<uint32>(color);
+        mChannelColor = (static_cast<uint32>(ContextInfo::GetRed(c)) << 16)
+                      | (static_cast<uint32>(ContextInfo::GetGreen(c)) << 8)
+                      | static_cast<uint32>(ContextInfo::GetBlue(c));
+      }
+    }
+  }
+
   void UpdateParams(IPlugAPIBase* pPlug, int savedBypass)
   {
     for (int i = 0; i < pPlug->NParams(); i++)
@@ -369,6 +440,9 @@ public:
   int mChannelNamespaceIndex = 0;
   int mChannelIndex = -1; // -1 until the host sends ChannelContext::kChannelIndexKey (see GetTrackIndex)
   unsigned int mChannelColor = 0;
+
+  // Presonus::IContextInfoProvider (Studio One) - shares the mChannelXxx members above
+  Steinberg::FUnknownPtr<Presonus::IContextInfoProvider> mPresonusContextInfoProvider;
 };
 
 END_IPLUG_NAMESPACE

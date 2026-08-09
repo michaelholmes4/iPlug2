@@ -48,6 +48,8 @@ class IPlugVST3 : public IPlugAPIBase
                 , public Steinberg::Vst::SingleComponentEffect
                 , public Steinberg::Vst::IMidiMapping
                 , public Steinberg::Vst::ChannelContext::IInfoListener
+                , public Presonus::IContextInfoHandler
+                , public Presonus::IContextInfoHandler2
 {
 public:
   using ViewType = IPlugVST3View<IPlugVST3>;
@@ -91,7 +93,8 @@ public:
   Steinberg::tresult PLUGIN_API setEditorState(Steinberg::IBStream* pState) override;
   Steinberg::tresult PLUGIN_API getEditorState(Steinberg::IBStream* pState) override;
   Steinberg::tresult PLUGIN_API setComponentState(Steinberg::IBStream *state) override;
- 
+  Steinberg::tresult PLUGIN_API setComponentHandler(Steinberg::Vst::IComponentHandler* handler) override;
+
   // IMidiMapping
   Steinberg::tresult PLUGIN_API getMidiControllerAssignment(Steinberg::int32 busIndex, Steinberg::int16 channel, Steinberg::Vst::CtrlNumber midiCCNumber, Steinberg::Vst::ParamID& tag) override;
   
@@ -132,6 +135,10 @@ public:
   /** Get the namespace index of the track that the plug-in is inserted on */
   int GetTrackNamespaceIndex() override { return mChannelNamespaceIndex; };
 
+  // Presonus::IContextInfoHandler / IContextInfoHandler2 (Studio One)
+  void PLUGIN_API notifyContextInfoChange() override { PresonusContextInfoChanged(nullptr); }
+  void PLUGIN_API notifyContextInfoChange(Steinberg::FIDString id) override { PresonusContextInfoChanged(id); }
+
   Steinberg::Vst::IComponentHandler* GetComponentHandler() { return componentHandler; }
   ViewType* GetView() { return mView; }
   
@@ -166,6 +173,8 @@ public:
   DEFINE_INTERFACES
     DEF_INTERFACE(IMidiMapping)
     DEF_INTERFACE(IInfoListener)
+    DEF_INTERFACE(IContextInfoHandler)
+    DEF_INTERFACE(IContextInfoHandler2)
   END_DEFINE_INTERFACES(SingleComponentEffect)
   REFCOUNT_METHODS(SingleComponentEffect)
 

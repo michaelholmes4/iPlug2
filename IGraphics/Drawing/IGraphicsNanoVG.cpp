@@ -421,55 +421,36 @@ void IGraphicsNanoVG::GetLayerBitmapData(const ILayerPtr& layer, RawBitmapData& 
 
 APIBitmap* IGraphicsNanoVG::SnapshotCanvas(const IRECT& bounds)
 {
-  const float scale = GetBackingPixelScale();
-  const int x = static_cast<int>(std::round(bounds.L * scale));
-  const int y = static_cast<int>(std::round(bounds.T * scale));
-  const int w = std::max(1, static_cast<int>(std::round(bounds.W() * scale)));
-  const int h = std::max(1, static_cast<int>(std::round(bounds.H() * scale)));
+  if (!mMainFrameBuffer)
+    return nullptr;
 
-  RawBitmapData packed;
-  packed.Resize(w * h * 4);
+  // The capture stays on the GPU: the main framebuffer's texture is drawn into a new
+  // layer-sized FBO, clipped to `bounds` by the layer's own clip region.
+  //
+  // This used to read the region back to the CPU (glReadPixels/mnvgReadPixels) and wrap
+  // the pixels in a plain image. That cost a full stall of the render thread every frame
+  // an overlay was visible - on Metal mnvgReadPixels blocks in [MTLCommandBuffer
+  // waitUntilCompleted] on the command buffer feeding the main framebuffer, which is also
+  // the one tied to drawable acquisition. Under AAX/Pro Tools that wait never returned and
+  // the host killed the plugin. Reading a *layer's* FBO (as ApplyLayerDropShadow does) is
+  // unaffected; it is specifically the main framebuffer that must not be waited on.
+  //
+  // Command buffers commit in order on a single queue, so binding the capture FBO as the
+  // render target - PushLayer() ends the current frame first - is enough to order the
+  // main framebuffer's pending drawing ahead of the sampling here. No CPU sync required.
 
-  const bool wasInDraw = mInDraw;
-  if (wasInDraw)
-    nvgEndFrame(mVG); // flush controls drawn so far into mMainFrameBuffer
+  // A non-owning view of the main framebuffer's texture, covering the whole canvas.
+  // DrawBitmap() scales a bitmap to pixels / (scale * drawScale), so passing the backing
+  // pixel scale (with the implicit drawScale of 1 this Bitmap ctor sets) maps its pixels
+  // 1:1 onto GetBounds() in draw coordinates. Shared, so the texture outlives the wrapper.
+  ILayerPtr canvas(new ILayer(new Bitmap(mVG, "", GetBackingPixelScale(), mMainFrameBuffer->image, true),
+                              GetBounds(), nullptr, IRECT()));
 
-#if defined(IGRAPHICS_GL)
-  // GL FBO storage is bottom-up, so convert the top-left-origin rect to GL's bottom-left origin.
-  // glReadPixels packs rows tightly (w * 4 bytes) so it can write directly into `packed`.
-  nvgBindFramebuffer(mMainFrameBuffer);
-  const int fboHeight = static_cast<int>(std::round(WindowHeight() * GetScreenScale()));
-  nvgReadPixels(mVG, mMainFrameBuffer->image, x, fboHeight - y - h, w, h, packed.Get());
-#else
-  // mnvgReadPixels always uses the source texture's full width as the row stride of the
-  // destination buffer, regardless of the requested region width, so read into a
-  // full-width-stride buffer first and then repack the region into tightly-packed rows.
-  const int fboWidth = static_cast<int>(std::round(WindowWidth() * GetScreenScale()));
-  RawBitmapData data;
-  data.Resize(fboWidth * h * 4);
-  nvgReadPixels(mVG, mMainFrameBuffer->image, x, y, w, h, data.Get());
+  StartLayer(nullptr, bounds);
+  DrawFittedLayer(canvas, GetBounds(), nullptr);
+  ILayerPtr captured = EndLayer();
 
-  const int srcStride = fboWidth * 4;
-  const int dstStride = w * 4;
-  for (int row = 0; row < h; row++)
-    memcpy(packed.Get() + row * dstStride, data.Get() + row * srcStride, dstStride);
-#endif
-
-  if (wasInDraw)
-  {
-    nvgBindFramebuffer(mMainFrameBuffer); // resume main frame buffer update
-    nvgBeginFrame(mVG, WindowWidth(), WindowHeight(), GetScreenScale());
-
-    // nvgBeginFrame resets NanoVG's scissor/transform state, discarding the clip
-    // region and transform set up by PrepareRegion() for the control currently
-    // being drawn. Restore them (mirrors the PushLayer/PopLayer pattern), otherwise
-    // the remainder of this control's Draw() is unclipped and mis-scaled.
-    PathClipRegion();
-    PathClear();
-  }
-
-  // Wrap the captured pixels in a plain (non-FBO) image, same as the raw mask bitmap in ApplyShadowMask().
-  return new Bitmap(mVG, w, h, packed.Get(), GetScreenScale(), GetDrawScale());
+  return captured->ReleaseAPIBitmap();
 }
 
 void IGraphicsNanoVG::ApplyShadowMask(ILayerPtr& layer, RawBitmapData& mask, const IShadow& shadow)

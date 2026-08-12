@@ -2385,6 +2385,12 @@ public:
   /**  @return const APIBitmap* The API bitmap for the layer */
   const APIBitmap* GetAPIBitmap() const { return mBitmap.get(); }
 
+  /** Transfers ownership of the layer's bitmap to the caller, leaving the layer empty.
+   * Lets a backend implement SnapshotCanvas() in terms of the layer machinery, which
+   * returns a bitmap rather than a layer.
+   * @return APIBitmap* The API bitmap for the layer, now owned by the caller */
+  APIBitmap* ReleaseAPIBitmap() { return mBitmap.release(); }
+
   /** @return IBitmap An IBitmap to use the layer directly */
   IBitmap GetBitmap() const { return IBitmap(mBitmap.get(), 1, false); }
 

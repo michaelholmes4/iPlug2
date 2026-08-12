@@ -214,9 +214,11 @@ endif()
 # We use an OBJECT library so we can set -fobjc-arc only on the Metal source file
 if(NOT TARGET iPlug2_IGraphics_NanoVG_Metal_obj)
   if(APPLE OR IOS)
+    # N.B. IGraphicsNanoVG_metal.mm is deliberately NOT here - see the target_sources()
+    # call on the Metal INTERFACE target below. Only the plain-C nanovg source, which
+    # includes no iPlug2 C++ headers, is safe to compile once and share between formats.
     add_library(iPlug2_IGraphics_NanoVG_Metal_obj OBJECT
       ${IGRAPHICS_DIR}/Drawing/IGraphicsNanoVG_src.m
-      ${IGRAPHICS_DIR}/Drawing/IGraphicsNanoVG_metal.mm
     )
 
     target_include_directories(iPlug2_IGraphics_NanoVG_Metal_obj PRIVATE
@@ -260,8 +262,22 @@ if(NOT TARGET iPlug2::IGraphics::NanoVG::Metal)
       IGRAPHICS_METAL
     )
 
+    # IGraphicsNanoVG_metal.mm is compiled per consuming plugin target, NOT once into the
+    # shared object library above. It includes IGraphics.h, and IGraphics' class layout is
+    # not the same in every format: under AAX_API it gains an IPlugAAXView_Interface base
+    # class (see IGraphics.h), which shifts member offsets and the vtable. Compiling this
+    # file once without any format define and linking the same object into every format is
+    # an ODR violation - in the AAX binary its virtual calls resolved to the wrong vtable
+    # slot, so _BlurLayerMetal's CreateAPIBitmap(w, h, ...) landed in
+    # LoadAPIBitmap(const char* name, ...) and strlen() ran off an int-as-pointer, hanging
+    # the UI until Pro Tools killed the plugin.
+    set_source_files_properties(${IGRAPHICS_DIR}/Drawing/IGraphicsNanoVG_metal.mm
+      PROPERTIES COMPILE_OPTIONS "-fobjc-arc" # this source file requires ARC
+    )
+
     # Link object files using generator expression
     target_sources(iPlug2::IGraphics::NanoVG::Metal INTERFACE
+      ${IGRAPHICS_DIR}/Drawing/IGraphicsNanoVG_metal.mm
       $<TARGET_OBJECTS:iPlug2_IGraphics_NanoVG_Metal_obj>
     )
 

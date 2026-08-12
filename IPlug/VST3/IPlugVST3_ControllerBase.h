@@ -254,6 +254,7 @@ public:
           Steinberg::String str(name.data());
           str.toMultiByte(kCP_Utf8);
           mChannelName.Set(str);
+          mHostInfoListenerAttrs |= kHostInfoListenerName;
         }
       }
 
@@ -270,6 +271,7 @@ public:
           Steinberg::String str(name.data());
           str.toMultiByte(kCP_Utf8);
           mChannelUID.Set(str);
+          mHostInfoListenerAttrs |= kHostInfoListenerUID;
         }
       }
 
@@ -278,6 +280,7 @@ public:
       if (pList->getInt(ChannelContext::kChannelIndexKey, index) == kResultTrue)
       {
         mChannelIndex = static_cast<int>(index);
+        mHostInfoListenerAttrs |= kHostInfoListenerIndex;
       }
 
       // get the channel color
@@ -285,6 +288,7 @@ public:
       if (pList->getInt(ChannelContext::kChannelColorKey, color) == kResultTrue)
       {
         mChannelColor = (uint32) color;
+        mHostInfoListenerAttrs |= kHostInfoListenerColor;
       }
 
       // get channel index namespace order of the current used index namespace
@@ -350,6 +354,11 @@ public:
   // id is one of the Presonus::ContextInfo::kXxx attribute ids, or nullptr to refresh everything
   // (the argument-less Presonus::IContextInfoHandler::notifyContextInfoChange() case, and our own
   // initial pull in SetupPresonusContextInfo() above).
+  //
+  // This is a fallback for hosts that don't implement ChannelContext::IInfoListener (Studio One).
+  // Hosts that implement both (Ableton Live) stay on the IInfoListener values, since the two specs
+  // disagree - notably kColor is documented as ABGR here but ARGB in ivstchannelcontextinfo.h, and
+  // hosts don't necessarily honour that difference.
   void PresonusContextInfoChanged(Steinberg::FIDString id)
   {
     using namespace Steinberg;
@@ -360,7 +369,7 @@ public:
 
     const bool all = (id == nullptr);
 
-    if (all || !strcmp(id, ContextInfo::kName))
+    if ((all || !strcmp(id, ContextInfo::kName)) && !(mHostInfoListenerAttrs & kHostInfoListenerName))
     {
       Vst::TChar buf[128] = {0};
       if (mPresonusContextInfoProvider->getContextInfoString(buf, 128, ContextInfo::kName) == kResultTrue)
@@ -371,7 +380,7 @@ public:
       }
     }
 
-    if (all || !strcmp(id, ContextInfo::kID))
+    if ((all || !strcmp(id, ContextInfo::kID)) && !(mHostInfoListenerAttrs & kHostInfoListenerUID))
     {
       Vst::TChar buf[128] = {0};
       if (mPresonusContextInfoProvider->getContextInfoString(buf, 128, ContextInfo::kID) == kResultTrue)
@@ -382,14 +391,14 @@ public:
       }
     }
 
-    if (all || !strcmp(id, ContextInfo::kIndex))
+    if ((all || !strcmp(id, ContextInfo::kIndex)) && !(mHostInfoListenerAttrs & kHostInfoListenerIndex))
     {
       int32 index = 0;
       if (mPresonusContextInfoProvider->getContextInfoValue(index, ContextInfo::kIndex) == kResultTrue)
         mChannelIndex = static_cast<int>(index);
     }
 
-    if (all || !strcmp(id, ContextInfo::kColor))
+    if ((all || !strcmp(id, ContextInfo::kColor)) && !(mHostInfoListenerAttrs & kHostInfoListenerColor))
     {
       int32 color = 0;
       if (mPresonusContextInfoProvider->getContextInfoValue(color, ContextInfo::kColor) == kResultTrue)
@@ -441,7 +450,17 @@ public:
   int mChannelIndex = -1; // -1 until the host sends ChannelContext::kChannelIndexKey (see GetTrackIndex)
   unsigned int mChannelColor = 0;
 
-  // Presonus::IContextInfoProvider (Studio One) - shares the mChannelXxx members above
+  // Presonus::IContextInfoProvider (Studio One) - shares the mChannelXxx members above, but only
+  // fills in the attributes the host hasn't already sent via ChannelContext::IInfoListener
+  enum
+  {
+    kHostInfoListenerName  = 1 << 0,
+    kHostInfoListenerUID   = 1 << 1,
+    kHostInfoListenerIndex = 1 << 2,
+    kHostInfoListenerColor = 1 << 3
+  };
+
+  unsigned int mHostInfoListenerAttrs = 0;
   Steinberg::FUnknownPtr<Presonus::IContextInfoProvider> mPresonusContextInfoProvider;
 };
 

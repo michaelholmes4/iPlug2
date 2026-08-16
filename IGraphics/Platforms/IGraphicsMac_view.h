@@ -135,6 +135,13 @@ using namespace igraphics;
   IRECTList mDirtyRects;
   IColorPickerHandlerFunc mColorPickerFunc;
 
+  // Recovery state for the macOS 26.4 AU input bug - see pollBlockedMouse.
+  NSPoint mLastDeliveredPos;
+  bool mSynthMouseDown;
+  bool mPrevPollButtonDown;
+  bool mInPlatformMenu;
+  float mSynthPrevX, mSynthPrevY;
+
 #if defined IGRAPHICS_GLES2 || defined IGRAPHICS_GLES3
   EGLDisplay mEGLDisplay;
   EGLSurface mEGLSurface;
@@ -152,6 +159,7 @@ using namespace igraphics;
 - (void) viewDidChangeBackingProperties: (NSNotification*) pNotification;
 - (void) drawRect: (NSRect) bounds;
 - (void) render;
+- (void) pollBlockedMouse;
 - (void) killTimer;
 #ifdef IGRAPHICS_CVDISPLAYLINK
 - (BOOL) setupDisplayLink;

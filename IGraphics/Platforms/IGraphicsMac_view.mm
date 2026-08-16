@@ -853,10 +853,158 @@ static void displaySourcePerform(void* info)
   #endif
 }
 
+// Recovers mouse input over regions where macOS stops delivering it.
+//
+// On macOS 26.4/26.4.1, AU views hosted out-of-process by Logic and GarageBand
+// (AUHostingService, composited through ViewBridge) lose mouse events over a
+// fixed rectangle of the view - measured here at 168 x 18px against the bottom
+// edge, in the same window-relative place across two different plugins and
+// every window size. Events never reach the view at all: mouseMoved:/mouseDown:
+// are simply never called, while [NSEvent mouseLocation] reports the pointer
+// sitting right there. Same symptom is reported against JUCE (Apple FB22477732,
+// FB23318421), so it is not framework-specific, and no host-side fix exists.
+//
+// The pointer and button state are still readable globally, so this samples
+// them per frame and drives IGraphics directly when - and only when - the OS
+// has stopped delivering. The gate is windowNumberAtPoint: disagreeing with our
+// own window while the pointer is inside our bounds, which is exactly the
+// condition that was measured. On a healthy system that never happens inside
+// the view, so this is inert on every other OS version, host and format, and
+// stops doing anything if Apple fixes the bug.
+- (void) pollBlockedMouse
+{
+  if (!mGraphics || ![self window]) return;
+
+  // A platform menu or text entry owns the mouse while it is up; synthesising
+  // underneath it re-enters the control that opened it.
+  if (mInPlatformMenu || mGraphics->IsInPlatformTextEntry()) return;
+
+  const NSPoint screenPos = [NSEvent mouseLocation];
+  const NSRect inWindow = [[self window] convertRectFromScreen:NSMakeRect(screenPos.x, screenPos.y, 1.f, 1.f)];
+  const NSPoint pt = [self convertPoint:inWindow.origin fromView:nil];
+
+  const float scale = mGraphics->GetDrawScale();
+  const float x = pt.x / scale;
+  const float y = pt.y / scale;
+
+  const bool inside = x >= 0.f && y >= 0.f && x < mGraphics->Width() && y < mGraphics->Height();
+
+  // Is something above us swallowing this point? Only the host's own frame
+  // window qualifies: it sits at our window level and encloses us entirely.
+  // An unrelated app's window overlapping the plugin must NOT trigger recovery,
+  // or we would react to clicks meant for it.
+  bool blocked = false;
+
+  if (inside)
+  {
+    const NSInteger ourNum = [[self window] windowNumber];
+    const NSInteger topNum = [NSWindow windowNumberAtPoint:screenPos belowWindowWithWindowNumber:0];
+
+    if (topNum != ourNum)
+    {
+      const void* wid = (const void*) (uintptr_t) (CGWindowID) topNum;
+      CFArrayRef ids = CFArrayCreate(NULL, &wid, 1, NULL);
+
+      if (CFArrayRef info = CGWindowListCreateDescriptionFromArray(ids))
+      {
+        if (CFArrayGetCount(info) > 0)
+        {
+          CFDictionaryRef d = (CFDictionaryRef) CFArrayGetValueAtIndex(info, 0);
+          CGRect b = CGRectZero;
+          int layer = 0;
+
+          if (CFDictionaryRef bd = (CFDictionaryRef) CFDictionaryGetValue(d, kCGWindowBounds))
+            CGRectMakeWithDictionaryRepresentation(bd, &b);
+          if (CFNumberRef n = (CFNumberRef) CFDictionaryGetValue(d, kCGWindowLayer))
+            CFNumberGetValue(n, kCFNumberIntType, &layer);
+
+          // kCGWindowBounds is top-left origin; our frame is bottom-left. Compare
+          // sizes and horizontal span, which is enough to identify the enclosing
+          // frame window without needing the screen height.
+          const NSRect ours = [[self window] frame];
+          const bool encloses = b.size.width >= ours.size.width && b.size.height >= ours.size.height &&
+                                b.origin.x <= ours.origin.x + 1.f;
+
+          blocked = encloses && layer == [[self window] level];
+        }
+        CFRelease(info);
+      }
+      CFRelease(ids);
+    }
+  }
+
+  const bool buttonDown = ([NSEvent pressedMouseButtons] & 1) != 0;
+
+  // Release anything we synthesised as soon as the button goes up or the
+  // pointer leaves, even if that happens outside the blocked region.
+  if (mSynthMouseDown && (!buttonDown || !inside))
+  {
+    mSynthMouseDown = false;
+    IMouseInfo info;
+    info.x = x;
+    info.y = y;
+    info.ms = IMouseMod(false, false, false, false, false);
+    std::vector<IMouseInfo> list {info};
+    mGraphics->OnMouseUp(list);
+  }
+
+  if (!blocked)
+  {
+    mPrevPollButtonDown = buttonDown;
+    return;
+  }
+
+  const NSInteger mods = [NSEvent modifierFlags];
+  IMouseMod ms(buttonDown, (mods & NSCommandKeyMask), (mods & NSShiftKeyMask),
+               (mods & NSControlKeyMask), (mods & NSAlternateKeyMask));
+
+  // Press: only on a transition, so holding the button does not repeat.
+  if (buttonDown && !mPrevPollButtonDown && !mSynthMouseDown)
+  {
+    mSynthMouseDown = true;
+    mSynthPrevX = x;
+    mSynthPrevY = y;
+
+    IMouseInfo info;
+    info.x = x;
+    info.y = y;
+    info.ms = ms;
+    std::vector<IMouseInfo> list {info};
+    mGraphics->OnMouseDown(list);
+  }
+  else if (mSynthMouseDown)
+  {
+    if (std::fabs(x - mSynthPrevX) > 0.01f || std::fabs(y - mSynthPrevY) > 0.01f)
+    {
+      IMouseInfo info;
+      info.x = x;
+      info.y = y;
+      info.dX = x - mSynthPrevX;
+      info.dY = y - mSynthPrevY;
+      info.ms = ms;
+      mSynthPrevX = x;
+      mSynthPrevY = y;
+      std::vector<IMouseInfo> list {info};
+      mGraphics->OnMouseDrag(list);
+    }
+  }
+  else if (std::fabs(x - mLastDeliveredPos.x) > 0.01f || std::fabs(y - mLastDeliveredPos.y) > 0.01f)
+  {
+    // Hover. Guarded on movement since the last position IGraphics was told
+    // about - real events update that too, so a live region never double-fires.
+    mLastDeliveredPos = NSMakePoint(x, y);
+    mGraphics->OnMouseOver(x, y, ms);
+  }
+
+  mPrevPollButtonDown = buttonDown;
+}
+
 - (void) render
 {
+  [self pollBlockedMouse];
+
   mDirtyRects.Clear();
-  
+
   if (mGraphics->IsDirty(mDirtyRects))
   {
     mGraphics->SetAllControlsClean();
@@ -880,7 +1028,12 @@ static void displaySourcePerform(void* info)
     NSPoint pt = [self convertPoint:[pEvent locationInWindow] fromView:nil];
     x = pt.x / mGraphics->GetDrawScale();
     y = pt.y / mGraphics->GetDrawScale();
-   
+
+    // Every real event records where IGraphics was last told the pointer is, so
+    // pollBlockedMouse can tell "the OS went quiet" from "nothing has moved".
+    mLastDeliveredPos = NSMakePoint(x, y);
+
+
     mGraphics->DoCursorLock(x, y, mPrevX, mPrevY);
     mGraphics->SetTabletInput(pEvent.subtype == NSTabletPointEventSubtype);
   }
@@ -1306,8 +1459,16 @@ static void MakeCursorFromName(NSCursor*& cursor, const char *name)
     wp = {bounds.origin.x, bounds.origin.y};
   }
   
+  // This blocks for the whole life of the menu, in a nested tracking loop that
+  // still services the render source (see setupDisplayLink). pollBlockedMouse
+  // therefore keeps running underneath it, so flag the menu as up and let the
+  // poll stand down - otherwise it synthesises events into IGraphics while the
+  // platform menu owns the mouse.
+  mInPlatformMenu = true;
   [pNSMenu popUpMenuPositioningItem:pSelectedItem atLocation:wp inView:self];
-  
+  mInPlatformMenu = false;
+
+
   NSMenuItem* pChosenItem = [pDummyView menuItem];
   NSMenu* pChosenMenu = [pChosenItem menu];
   IPopupMenu* pIPopupMenu = [(IGRAPHICS_MENU*) pChosenMenu iPopupMenu];

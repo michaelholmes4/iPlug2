@@ -88,6 +88,9 @@ public:
   /** Get the color of the track that the plug-in is inserted on */
   void GetTrackColor(int& r, int& g, int& b) override { r = (mChannelColor>>16)&0xff; g = (mChannelColor>>8)&0xff; b = mChannelColor&0xff; };
 
+  /** Whether the host actually sent a track colour (it is optional even on VST3) */
+  bool HasTrackColor() override { return mHasChannelColor; };
+
   /** Get the name of the track that the plug-in is inserted on */
   void GetTrackName(WDL_String& str) override { str = mChannelName; };
 

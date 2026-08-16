@@ -120,6 +120,13 @@ public:
   /** Get the color of the track that the plug-in is inserted on */
   virtual void GetTrackColor(int& r, int& g, int& b) { r = 0; g = 0; b = 0; }
 
+  /** Whether the host actually supplied a track colour - false on every format/host that has no
+   * colour API at all (AU, AAX, CLAP, standalone app), and on VST3 hosts that never send one
+   * (ChannelContext::kChannelColorKey is optional). When this returns false, GetTrackColor's
+   * output above is meaningless (it reports black) and should not be displayed - same spirit as
+   * GetTrackIndex's -1 convention below */
+  virtual bool HasTrackColor() { return false; }
+
   /** Get the name of the track that the plug-in is inserted on */
   virtual void GetTrackName(WDL_String& str) {}
 

@@ -288,6 +288,7 @@ public:
       if (pList->getInt(ChannelContext::kChannelColorKey, color) == kResultTrue)
       {
         mChannelColor = (uint32) color;
+        mHasChannelColor = true;
         mHostInfoListenerAttrs |= kHostInfoListenerColor;
       }
 
@@ -409,6 +410,7 @@ public:
         mChannelColor = (static_cast<uint32>(ContextInfo::GetRed(c)) << 16)
                       | (static_cast<uint32>(ContextInfo::GetGreen(c)) << 8)
                       | static_cast<uint32>(ContextInfo::GetBlue(c));
+        mHasChannelColor = true;
       }
     }
   }
@@ -449,6 +451,12 @@ public:
   int mChannelNamespaceIndex = 0;
   int mChannelIndex = -1; // -1 until the host sends ChannelContext::kChannelIndexKey (see GetTrackIndex)
   unsigned int mChannelColor = 0;
+  // false until a host actually sends a colour, on either the IInfoListener or the PreSonus path
+  // below - mChannelColor's 0 default is indistinguishable from a genuinely black track, so this
+  // is what HasTrackColor() reports (see IPlugAPIBase). Note kHostInfoListenerColor below is NOT
+  // a substitute: the PreSonus path deliberately leaves that flag clear, since it uses it to
+  // detect whether the IInfoListener path already supplied the value.
+  bool mHasChannelColor = false;
 
   // Presonus::IContextInfoProvider (Studio One) - shares the mChannelXxx members above, but only
   // fills in the attributes the host hasn't already sent via ChannelContext::IInfoListener

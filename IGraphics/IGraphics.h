@@ -1167,9 +1167,24 @@ public:
   
   /** @return True if a platform text entry in is progress */
   bool IsInPlatformTextEntry() { return mInTextEntry != nullptr && !mTextEntryControl; }
-  
+
+  /** @return True if a popup menu has been requested and has not yet completed. On platforms where
+   * CreatePlatformPopupMenu() is asynchronous this covers the whole window between the request and
+   * the menu closing, not just the time the menu is on screen. */
+  bool IsPopupMenuPending() const { return mPopupMenuPending; }
+
+  /** @return True while inside the per-frame render tick, i.e. somewhere under IsDirty()/Draw().
+   * Nothing may run a nested modal loop from in here - see IGraphicsMac::CreatePlatformPopupMenu(). */
+  bool InRenderTick() const { return mInRenderTick; }
+
+  /** Marks the start/end of the per-frame render tick. Called by the platform view. */
+  void SetInRenderTick(bool inTick) { mInRenderTick = inTick; }
+
   /** @return Ptr to the control that launched the text entry */
   IControl* GetControlInTextEntry() { return mInTextEntry; }
+
+  /** @return Ptr to the control that launched the popup menu, or nullptr if it has since been deleted */
+  IControl* GetControlInPopupMenu() { return mInPopupMenu; }
   
   /** Called when the text entry is dismissed, to reset mInTextEntry */
   void ClearInTextEntryControl() { mInTextEntry = nullptr; }
@@ -1896,6 +1911,12 @@ private:
   IControl* mInPopupMenu = nullptr;
   void* mPlatformContext = nullptr;
   bool mIsContextMenu = false;
+  // A popup menu request that has not yet completed. Distinct from mInPopupMenu, which is nulled
+  // when the requesting control is deleted - exactly the case where an asynchronous request is
+  // still in flight - and so cannot double as an in-flight flag. See DoCreatePopupMenu().
+  bool mPopupMenuPending = false;
+  double mPopupMenuRequestTime = 0.;
+  bool mInRenderTick = false;
   int mTextEntryValIdx = kNoValIdx;
   int mPopupMenuValIdx = kNoValIdx;
   int mMouseOverIdx = -1;

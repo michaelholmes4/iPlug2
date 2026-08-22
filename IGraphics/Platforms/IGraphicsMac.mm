@@ -21,6 +21,7 @@
 
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
+
 using namespace iplug;
 using namespace igraphics;
 
@@ -619,9 +620,24 @@ bool IGraphicsMac::PromptForColor(IColor& color, const char* str, IColorPickerHa
 
 IPopupMenu* IGraphicsMac::CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT bounds, bool& isAsync)
 {
-  isAsync = true;
-  
-  dispatch_async(dispatch_get_main_queue(), ^{
+  // Upstream 1607b75d5 made this unconditionally asynchronous so that a menu could be opened from
+  // an end-of-animation callback without blocking. That is a real requirement, but it moved the
+  // *whole* menu onto the host's main queue: the menu no longer opens when the click is handled,
+  // it opens whenever the host next gets round to draining libdispatch. In hosts that do not
+  // service it promptly - measured at 1-2s in Fender Studio Pro - a click appears to do nothing,
+  // and every further click queues another menu behind it.
+  //
+  // So dispatch only when we actually have to. The one thing a nested modal loop must not run
+  // inside is the render tick: IControl::Animate() (the animation callbacks upstream cared about)
+  // is called from IGraphics::IsDirty(), immediately before Draw() binds the drawing context.
+  // Everywhere else - which is to say the mouse and key handlers - it is safe to open the menu
+  // inline, and that is also what AppKit itself does for a pop-up button.
+  if ([NSThread isMainThread] && !InRenderTick())
+  {
+    isAsync = false;
+
+    TREEDSP_MENU_LOG("sync open");
+
     IPopupMenu* pReturnMenu = nullptr;
 
     if (mView)
@@ -632,8 +648,40 @@ IPopupMenu* IGraphicsMac::CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT 
 
     if (pReturnMenu && pReturnMenu->GetFunction())
       pReturnMenu->ExecFunction();
-    
-    this->SetControlValueAfterPopupMenu(pReturnMenu);
+
+    // Caller (IGraphics::DoCreatePopupMenu) calls SetControlValueAfterPopupMenu() for us.
+    return pReturnMenu;
+  }
+
+  isAsync = true;
+
+  const double enqueuedAt = GetTimestamp();
+  TREEDSP_MENU_LOG("async enqueue");
+
+  dispatch_async(dispatch_get_main_queue(), ^{
+    // Enqueue -> entry. Anything above a frame or two means the host is not servicing its main
+    // queue, which is what made menus appear seconds after the click that asked for them.
+    TREEDSP_MENU_LOG("async block entry after %.1f ms", (GetTimestamp() - enqueuedAt) * 1000.);
+
+    IPopupMenu* pReturnMenu = nullptr;
+
+    // Whatever happens in here, the pending flag has to come back down or every later menu in the
+    // UI is blocked. SetControlValueAfterPopupMenu() clears it, so make sure it is always reached.
+    @try
+    {
+      if (mView)
+      {
+        NSRect areaRect = ToNSRect(this, bounds);
+        pReturnMenu = [(IGRAPHICS_VIEW*) mView createPopupMenu: menu: areaRect];
+      }
+
+      if (pReturnMenu && pReturnMenu->GetFunction())
+        pReturnMenu->ExecFunction();
+    }
+    @finally
+    {
+      this->SetControlValueAfterPopupMenu(pReturnMenu);
+    }
   });
 
   return nullptr;

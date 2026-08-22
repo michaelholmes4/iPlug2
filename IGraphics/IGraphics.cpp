@@ -206,7 +206,8 @@ void IGraphics::RemoveAllControls()
   mCornerResizer = nullptr;
   mPerfDisplay = nullptr;
   mInPopupMenu = nullptr;
-    
+  mPopupMenuPending = false;
+
 #ifndef NDEBUG
   mLiveEdit = nullptr;
 #endif
@@ -260,9 +261,14 @@ void IGraphics::SetControlValueAfterTextEdit(const char* str)
 
 void IGraphics::SetControlValueAfterPopupMenu(IPopupMenu* pMenu)
 {
+  // Cleared first, above the early return below. mInPopupMenu is nulled when the requesting control
+  // is deleted (see RemoveControl), which is precisely when an in-flight request completes with
+  // nothing to deliver to - clearing the flag after that return would leave menus wedged for good.
+  mPopupMenuPending = false;
+
   if (!mInPopupMenu)
     return;
-  
+
   if (mIsContextMenu)
     mInPopupMenu->OnContextSelection(pMenu ? pMenu->GetChosenItemIdx() : -1);
   else
@@ -1971,8 +1977,26 @@ void IGraphics::CreateTextEntry(IControl& control, const IText& text, const IREC
 
 void IGraphics::DoCreatePopupMenu(IControl& control, IPopupMenu& menu, const IRECT& bounds, int valIdx, bool isContext)
 {
+  // One menu at a time. CreatePlatformPopupMenu() is asynchronous on some platforms (see
+  // IGraphicsMac::CreatePlatformPopupMenu), so a request can sit queued for as long as the host
+  // takes to service its main queue - measured at 1-2s in some hosts. Without this, every click
+  // during that window queues another menu, and they then open back to back as each one closes,
+  // all of them reading the same IPopupMenu. Dropping the extra requests is the right answer:
+  // the user is clicking because nothing has appeared yet, not because they want six menus.
+  static constexpr double kPopupMenuPendingTimeout = 5.;
+
+  if (mPopupMenuPending && (GetTimestamp() - mPopupMenuRequestTime) < kPopupMenuPendingTimeout)
+    return;
+
+  // The timeout is an escape hatch, not the mechanism: if a request never completes at all - the
+  // host tears down the run loop, an exception unwinds out of the platform menu - a plain bool
+  // would wedge every menu in the UI forever. Five seconds is far longer than any legitimate
+  // request latency and short enough that the user's next click recovers.
+  mPopupMenuPending = true;
+  mPopupMenuRequestTime = GetTimestamp();
+
   ReleaseMouseCapture();
-    
+
   mInPopupMenu = &control;
   mPopupMenuValIdx = valIdx;
   mIsContextMenu = isContext;

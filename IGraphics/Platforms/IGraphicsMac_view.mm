@@ -20,6 +20,7 @@
 #include "IControl.h"
 #include "IPlugParameter.h"
 #include "IPlugLogger.h"
+#include "IPlugPaths.h" // IsXPCAuHost()/IsOOPAuv3AppExtension() - see pollBlockedMouse
 
 using namespace iplug;
 using namespace igraphics;
@@ -871,13 +872,42 @@ static void displaySourcePerform(void* info)
 // condition that was measured. On a healthy system that never happens inside
 // the view, so this is inert on every other OS version, host and format, and
 // stops doing anything if Apple fixes the bug.
+//
+// "Inert" used to mean "runs and decides to do nothing", which still cost a
+// synchronous WindowServer round trip (windowNumberAtPoint:) on every rendered
+// frame in every build, for every user. That is pure overhead anywhere the bug
+// cannot occur, so the three conditions that make it possible are now checked
+// up front and cached: the format is an AU (compile time - the code is not in
+// the VST3, AAX or app binaries at all), the AU is actually hosted
+// out-of-process, and the OS is one that has the bug.
 - (void) pollBlockedMouse
 {
+#if defined AU_API || defined AUv3_API
+  // Resolved once. IsXPCAuHost()/IsOOPAuv3AppExtension() are the same predicates
+  // IGraphicsMac::HideMouseCursor() uses to spot out-of-process AU hosting.
+  static const bool sPollApplies = []() -> bool {
+    if (@available(macOS 26.0, *))
+    {
+  #if defined AU_API
+      return IsXPCAuHost();
+  #else
+      return IsOOPAuv3AppExtension();
+  #endif
+    }
+
+    return false;
+  }();
+
+  if (!sPollApplies) return;
+
   if (!mGraphics || ![self window]) return;
 
   // A platform menu or text entry owns the mouse while it is up; synthesising
-  // underneath it re-enters the control that opened it.
-  if (mInPlatformMenu || mGraphics->IsInPlatformTextEntry()) return;
+  // underneath it re-enters the control that opened it. IsPopupMenuPending()
+  // covers the request window too: on the asynchronous path mInPlatformMenu is
+  // only true once the menu is actually tracking, and a synthesised event
+  // landing before then re-enters the control that asked for the menu.
+  if (mInPlatformMenu || mGraphics->IsPopupMenuPending() || mGraphics->IsInPlatformTextEntry()) return;
 
   const NSPoint screenPos = [NSEvent mouseLocation];
   const NSRect inWindow = [[self window] convertRectFromScreen:NSMakeRect(screenPos.x, screenPos.y, 1.f, 1.f)];
@@ -897,40 +927,58 @@ static void displaySourcePerform(void* info)
 
   if (inside)
   {
-    const NSInteger ourNum = [[self window] windowNumber];
-    const NSInteger topNum = [NSWindow windowNumberAtPoint:screenPos belowWindowWithWindowNumber:0];
+    // Both queries below are synchronous WindowServer round trips, so the answer
+    // is cached rather than asked 60x a second. Which window is on top and how
+    // big the host's frame window is do not change from frame to frame; a
+    // quarter of a second is far below the threshold where a stale answer is
+    // noticeable, and the recovery it gates only ever starts on a button
+    // transition anyway.
+    static constexpr double kBlockedCacheSeconds = 0.25;
 
-    if (topNum != ourNum)
+    const double now = GetTimestamp();
+
+    if ((now - mBlockedQueryTime) >= kBlockedCacheSeconds)
     {
-      const void* wid = (const void*) (uintptr_t) (CGWindowID) topNum;
-      CFArrayRef ids = CFArrayCreate(NULL, &wid, 1, NULL);
+      mBlockedQueryTime = now;
+      mBlockedCached = false;
 
-      if (CFArrayRef info = CGWindowListCreateDescriptionFromArray(ids))
+      const NSInteger ourNum = [[self window] windowNumber];
+      const NSInteger topNum = [NSWindow windowNumberAtPoint:screenPos belowWindowWithWindowNumber:0];
+
+      if (topNum != ourNum)
       {
-        if (CFArrayGetCount(info) > 0)
+        const void* wid = (const void*) (uintptr_t) (CGWindowID) topNum;
+        CFArrayRef ids = CFArrayCreate(NULL, &wid, 1, NULL);
+
+        if (CFArrayRef info = CGWindowListCreateDescriptionFromArray(ids))
         {
-          CFDictionaryRef d = (CFDictionaryRef) CFArrayGetValueAtIndex(info, 0);
-          CGRect b = CGRectZero;
-          int layer = 0;
+          if (CFArrayGetCount(info) > 0)
+          {
+            CFDictionaryRef d = (CFDictionaryRef) CFArrayGetValueAtIndex(info, 0);
+            CGRect b = CGRectZero;
+            int layer = 0;
 
-          if (CFDictionaryRef bd = (CFDictionaryRef) CFDictionaryGetValue(d, kCGWindowBounds))
-            CGRectMakeWithDictionaryRepresentation(bd, &b);
-          if (CFNumberRef n = (CFNumberRef) CFDictionaryGetValue(d, kCGWindowLayer))
-            CFNumberGetValue(n, kCFNumberIntType, &layer);
+            if (CFDictionaryRef bd = (CFDictionaryRef) CFDictionaryGetValue(d, kCGWindowBounds))
+              CGRectMakeWithDictionaryRepresentation(bd, &b);
+            if (CFNumberRef n = (CFNumberRef) CFDictionaryGetValue(d, kCGWindowLayer))
+              CFNumberGetValue(n, kCFNumberIntType, &layer);
 
-          // kCGWindowBounds is top-left origin; our frame is bottom-left. Compare
-          // sizes and horizontal span, which is enough to identify the enclosing
-          // frame window without needing the screen height.
-          const NSRect ours = [[self window] frame];
-          const bool encloses = b.size.width >= ours.size.width && b.size.height >= ours.size.height &&
-                                b.origin.x <= ours.origin.x + 1.f;
+            // kCGWindowBounds is top-left origin; our frame is bottom-left. Compare
+            // sizes and horizontal span, which is enough to identify the enclosing
+            // frame window without needing the screen height.
+            const NSRect ours = [[self window] frame];
+            const bool encloses = b.size.width >= ours.size.width && b.size.height >= ours.size.height &&
+                                  b.origin.x <= ours.origin.x + 1.f;
 
-          blocked = encloses && layer == [[self window] level];
+            mBlockedCached = encloses && layer == [[self window] level];
+          }
+          CFRelease(info);
         }
-        CFRelease(info);
+        CFRelease(ids);
       }
-      CFRelease(ids);
     }
+
+    blocked = mBlockedCached;
   }
 
   const bool buttonDown = ([NSEvent pressedMouseButtons] & 1) != 0;
@@ -997,18 +1045,29 @@ static void displaySourcePerform(void* info)
   }
 
   mPrevPollButtonDown = buttonDown;
+#endif // AU_API || AUv3_API
 }
 
 - (void) render
 {
   [self pollBlockedMouse];
 
+  // Flagged for the whole tick, not just Draw(). IsDirty() is where IControl::Animate() runs, so an
+  // animation's end-of-transition callback lands in here too, and nothing under this point may open
+  // a platform menu inline - see IGraphicsMac::CreatePlatformPopupMenu().
+  //
+  // Saved and restored rather than set and cleared: the display source is serviced by the nested
+  // run loop a platform menu tracks in, so a frame can render underneath one, and clearing on the
+  // way out of the inner frame would unflag an outer tick that is still running.
+  const bool wasInRenderTick = mGraphics->InRenderTick();
+  mGraphics->SetInRenderTick(true);
+
   mDirtyRects.Clear();
 
   if (mGraphics->IsDirty(mDirtyRects))
   {
     mGraphics->SetAllControlsClean();
-      
+
     #if defined IGRAPHICS_CPU
       for (int i = 0; i < mDirtyRects.Size(); i++)
         [self setNeedsDisplayInRect:ToNSRect(mGraphics, mDirtyRects.Get(i))];
@@ -1019,6 +1078,8 @@ static void displaySourcePerform(void* info)
     [self swapBuffers]; // No-op for Metal
     #endif
   }
+
+  mGraphics->SetInRenderTick(wasInRenderTick);
 }
 
 - (void) getMouseXY: (NSEvent*) pEvent : (float&) x : (float&) y
@@ -1446,19 +1507,28 @@ static void MakeCursorFromName(NSCursor*& cursor, const char *name)
   NSPoint wp = {bounds.origin.x, bounds.origin.y + bounds.size.height + 4};
 
   NSMenuItem* pSelectedItem = nil;
-  
+
   auto selectedItemIdx = menu.GetChosenItemIdx();
 
-  if (selectedItemIdx > -1)
+  // Range-checked against the NSMenu we just built, not just against -1. The chosen index is
+  // carried on the IPopupMenu, which callers own, reuse and refill - so it can legitimately
+  // outlive the item list it was recorded against. -[NSMenu itemAtIndex:] raises for an index
+  // past the end, and an ObjC exception here takes the host down with it.
+  if (selectedItemIdx > -1 && selectedItemIdx < [pNSMenu numberOfItems])
   {
     pSelectedItem = [pNSMenu itemAtIndex:selectedItemIdx];
   }
-  
+
   if (pSelectedItem != nil)
   {
     wp = {bounds.origin.x, bounds.origin.y};
   }
-  
+
+  TREEDSP_MENU_LOG("presenting %ld items, current event %ld", (long) [pNSMenu numberOfItems],
+                   (long) [[NSApp currentEvent] type]);
+
+  const double presentedAt = GetTimestamp();
+
   // This blocks for the whole life of the menu, in a nested tracking loop that
   // still services the render source (see setupDisplayLink). pollBlockedMouse
   // therefore keeps running underneath it, so flag the menu as up and let the
@@ -1467,6 +1537,8 @@ static void MakeCursorFromName(NSCursor*& cursor, const char *name)
   mInPlatformMenu = true;
   [pNSMenu popUpMenuPositioningItem:pSelectedItem atLocation:wp inView:self];
   mInPlatformMenu = false;
+
+  TREEDSP_MENU_LOG("dismissed after %.1f ms", (GetTimestamp() - presentedAt) * 1000.);
 
 
   NSMenuItem* pChosenItem = [pDummyView menuItem];

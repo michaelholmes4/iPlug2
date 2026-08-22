@@ -22,6 +22,23 @@
 #include "IGraphicsMac.h"
 #include "IGraphicsStructs.h"
 
+// Popup menu tracing. Off by default; build with -DTREEDSP_MENU_TRACE to measure how long a menu
+// request takes to become a menu in a given host - the number that separates "the host is not
+// draining its main queue" from "AppKit is slow to present it". Read it with:
+//   log stream --style compact --info --debug --predicate 'subsystem == "com.treedsp.igraphics"'
+// DBGMSG is no use for this: it is printf, and a hosted plugin's stdout goes nowhere visible.
+#if defined TREEDSP_MENU_TRACE
+#import <os/log.h>
+#define TREEDSP_MENU_LOG(fmt, ...) os_log(TreeMenuLog(), fmt, ##__VA_ARGS__)
+static inline os_log_t TreeMenuLog()
+{
+  static os_log_t sLog = os_log_create("com.treedsp.igraphics", "menu");
+  return sLog;
+}
+#else
+#define TREEDSP_MENU_LOG(fmt, ...)
+#endif
+
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
 
@@ -141,6 +158,10 @@ using namespace igraphics;
   bool mPrevPollButtonDown;
   bool mInPlatformMenu;
   float mSynthPrevX, mSynthPrevY;
+  // Cached answer to "is a window of the host's on top of us here", so the
+  // WindowServer round trips behind it do not happen once per frame.
+  bool mBlockedCached;
+  double mBlockedQueryTime;
 
 #if defined IGRAPHICS_GLES2 || defined IGRAPHICS_GLES3
   EGLDisplay mEGLDisplay;

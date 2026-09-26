@@ -25,6 +25,7 @@
 #include "include/effects/SkDashPathEffect.h"
 #include "include/effects/SkGradientShader.h"
 #include "include/effects/SkImageFilters.h"
+#include "include/effects/SkRuntimeEffect.h"
 
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
 #include "modules/skparagraph/include/FontCollection.h"
@@ -1199,6 +1200,164 @@ ILayerPtr IGraphicsSkia::BlurLayer(const ILayerPtr& layer, float blurSize)
                                (float)layer->GetAPIBitmap()->GetDrawScale());
   return std::make_unique<ILayer>(pBmp, layer->Bounds(), nullptr, IRECT());
 #endif
+}
+
+// "Liquid glass" lens, evaluated in graphics context coordinates (points). A rounded rect whose
+// edge is a convex bezel uDepth points wide: rays through the bezel are bent toward the centre by
+// Snell's law, so the rim magnifies the backdrop just inside it. Adapted from the SDF approach in
+// OverShifted/LiquidGlass (MIT) and the Snell's-law bezel described at kube.io/blog/liquid-glass-css-svg.
+static const char* kLiquidGlassSkSL = R"(
+uniform shader image;
+uniform float2 uCenter;
+uniform float2 uHalfSize;
+uniform float uRadius;
+uniform float uNormalRadius;
+uniform float uDepth;
+uniform float uRefraction;
+uniform float uDispersion;
+uniform float2 uLightDir;
+uniform float uLightIntensity;
+uniform float4 uTint; // premultiplied
+uniform float uSaturation;
+uniform float uBrightness;
+
+float sdRoundBox(float2 p, float2 b, float r)
+{
+  float2 q = abs(p) - b + r;
+  return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+}
+
+// Outward normal of a rounded box. Taken from a box whose radius is at least uDepth, so normals
+// turn smoothly around corners tighter than the bezel instead of creasing along the diagonal.
+float2 roundBoxNormal(float2 p, float2 b, float r)
+{
+  float2 q = abs(p) - b + r;
+  float2 n = (q.x > 0.0 && q.y > 0.0) ? normalize(q) : (q.x > q.y ? float2(1.0, 0.0) : float2(0.0, 1.0));
+  return n * float2(p.x < 0.0 ? -1.0 : 1.0, p.y < 0.0 ? -1.0 : 1.0);
+}
+
+half4 main(float2 coord)
+{
+  float2 p = coord - uCenter;
+  float d = sdRoundBox(p, uHalfSize, uRadius);
+  float2 n = roundBoxNormal(p, uHalfSize, uNormalRadius);
+
+  // x runs 0 at the edge to 1 where the bezel meets the flat top. The bezel is a convex squircle,
+  // height = (1 - (1 - x)^4)^(1/4); its slope sets the angle of incidence for a vertical view ray.
+  float x = clamp(-d / uDepth, 0.0, 1.0);
+  float u = 1.0 - x;
+  float slope = u * u * u * pow(max(1.0 - u * u * u * u, 1e-4), -0.75);
+  float theta1 = atan(slope);
+  float theta2 = asin(sin(theta1) / 1.5);
+  float2 offset = -n * (uRefraction * uDepth * tan(theta1 - theta2));
+
+  half4 col = image.eval(coord + offset);
+
+  if (uDispersion > 0.0)
+  {
+    // Blue bends more than red
+    float k = uDispersion * 0.3;
+    col.r = image.eval(coord + offset * (1.0 - k)).r;
+    col.b = image.eval(coord + offset * (1.0 + k)).b;
+  }
+
+  // Vibrancy: glass makes what's behind it more saturated and a touch brighter
+  half luma = dot(col.rgb, half3(0.2126, 0.7152, 0.0722));
+  col.rgb = clamp(mix(half3(luma), col.rgb, half(uSaturation)) + half(uBrightness) * col.a, 0.0, col.a);
+
+  col = half4(uTint) + col * half(1.0 - uTint.a);
+
+  // Edge light, in two parts. A faint Fresnel glow runs all the way round, fading within a few
+  // points of the edge. On top, a thin specular line: raising the facing term to a power gathers it
+  // onto the parts of the edge square-on to the light and lets it fade along the edges in between,
+  // with a weaker internal reflection on the opposite side.
+  float facing = dot(n, uLightDir);
+  float fresnel = exp(d / 4.0) * 0.12;
+  float rim = 1.0 - smoothstep(0.0, 0.8, -d);
+  float sheen = 1.0 - smoothstep(0.0, 4.0, -d);
+  float spec = pow(max(facing, 0.0), 3.0) + 0.5 * pow(max(-facing, 0.0), 3.0);
+  float lit = uLightIntensity * (fresnel + rim * (0.1 + spec) + 0.2 * sheen * spec);
+  lit = clamp(lit, 0.0, 1.0);
+
+  return col + half4(half(lit)) * (1.0 - col);
+}
+)";
+
+void IGraphicsSkia::DrawBackdropLiquidGlass(const IRECT& bounds, float cornerRadius, const ILiquidGlass& glass, const IBlend* pBlend)
+{
+  static const sk_sp<SkRuntimeEffect> sEffect = [] {
+    auto [effect, error] = SkRuntimeEffect::MakeForShader(SkString(kLiquidGlassSkSL));
+    if (!effect)
+      DBGMSG("Liquid glass shader failed to compile: %s\n", error.c_str());
+    return effect;
+  }();
+
+  if (!sEffect || bounds.Empty())
+  {
+    IGraphics::DrawBackdropLiquidGlass(bounds, cornerRadius, glass, pBlend);
+    return;
+  }
+
+  const float scale = GetBackingPixelScale();
+  const float halfW = bounds.W() * 0.5f;
+  const float halfH = bounds.H() * 0.5f;
+  const float maxRadius = std::min(halfW, halfH);
+  const float radius = Clip(cornerRadius, 0.f, maxRadius);
+  const float depth = Clip(glass.mDepth, 0.5f, maxRadius);
+
+  // Refraction only samples inward, so the capture just needs padding for the frost blur's context
+  const IRECT r = bounds.GetPadded(std::max(0.f, glass.mFrost)).Intersect(GetBounds()).GetPixelAligned(scale);
+
+  ILayerPtr layer(new ILayer(SnapshotCanvas(r), r, nullptr, IRECT()));
+
+  if (!layer->GetAPIBitmap())
+    return;
+
+  if (glass.mFrost > 0.f)
+    layer = BlurLayer(layer, glass.mFrost);
+
+  const SkiaDrawable* drawable = static_cast<const SkiaDrawable*>(layer->GetAPIBitmap()->GetBitmap());
+  sk_sp<SkImage> image = drawable->mIsSurface ? drawable->mSurface->makeImageSnapshot() : drawable->mImage;
+
+  if (!image)
+    return;
+
+  // Map the captured pixels back onto r, in the same point coordinates the shader runs in
+  const float imageScale = static_cast<float>(image->width()) / r.W();
+  SkMatrix imageMatrix = SkMatrix::Translate(r.L, r.T);
+  imageMatrix.preScale(1.f / imageScale, 1.f / imageScale);
+
+  const float lightAngle = DegToRad(glass.mLightAngle);
+  const float tintA = glass.mTint.A / 255.f;
+
+  const float center[2] = { bounds.MW(), bounds.MH() };
+  const float halfSize[2] = { halfW, halfH };
+  const float lightDir[2] = { std::sin(lightAngle), -std::cos(lightAngle) };
+  const float tint[4] = { glass.mTint.R / 255.f * tintA, glass.mTint.G / 255.f * tintA, glass.mTint.B / 255.f * tintA, tintA };
+
+  SkRuntimeShaderBuilder builder(sEffect);
+  builder.child("image") = image->makeShader(SkTileMode::kClamp, SkTileMode::kClamp, SkSamplingOptions(SkFilterMode::kLinear), &imageMatrix);
+  builder.uniform("uCenter").set(center, 2);
+  builder.uniform("uHalfSize").set(halfSize, 2);
+  builder.uniform("uRadius") = radius;
+  builder.uniform("uNormalRadius") = std::max(radius, std::min(depth, maxRadius));
+  builder.uniform("uDepth") = depth;
+  builder.uniform("uRefraction") = Clip(glass.mRefraction, 0.f, 2.f);
+  builder.uniform("uDispersion") = Clip(glass.mDispersion, 0.f, 1.f);
+  builder.uniform("uLightDir").set(lightDir, 2);
+  builder.uniform("uLightIntensity") = Clip(glass.mLightIntensity, 0.f, 1.f);
+  builder.uniform("uTint").set(tint, 4);
+  builder.uniform("uSaturation") = std::max(0.f, glass.mSaturation);
+  builder.uniform("uBrightness") = glass.mBrightness;
+
+  SkPaint paint;
+  paint.setShader(builder.makeShader());
+  paint.setAntiAlias(true);
+  paint.setBlendMode(SkiaBlendMode(pBlend));
+  if (pBlend)
+    paint.setAlpha(Clip(static_cast<int>(pBlend->mWeight * 255), 0, 255));
+
+  mCanvas->drawRoundRect(SkiaRect(bounds), radius, radius, paint);
 }
 
 void IGraphicsSkia::DrawMultiLineText(const IText& text, const char* str, const IRECT& bounds, const IBlend* pBlend)

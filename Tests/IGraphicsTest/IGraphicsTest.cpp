@@ -104,6 +104,7 @@ IGraphicsTest::IGraphicsTest(const InstanceInfo& info)
     "Mask",
     "DirBrowse",
     "DragNDrop",
+    "LiquidGlass",
     };
     
     WDL_String resourcePath;
@@ -150,6 +151,7 @@ IGraphicsTest::IGraphicsTest(const InstanceInfo& info)
         case 25: pNewControl = new TestMaskControl(testRect, pGraphics->LoadBitmap(SMILEY_FN)); break;
         case 26: pNewControl = new TestDirBrowseControl(testRect, "png", resourcePath.Get()); break;
         case 27: pNewControl = new TestDragAndDropControl(testRect); break;
+        case 28: pNewControl = new TestLiquidGlassControl(testRect); break;
       }
       
       if(pNewControl)

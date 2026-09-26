@@ -577,6 +577,17 @@ public:
    * @param pBlend Optional blend method for compositing the blurred result */
   void DrawBackdropBlur(const IRECT& bounds, float blurSize, const IBlend* pBlend = nullptr);
 
+  /** Captures the contents of the canvas already drawn this frame and draws it back through an "Apple liquid glass"
+   * style lens: a rounded rect whose curved bezel refracts the backdrop, with optional chromatic dispersion, frost,
+   * tint and rim lighting. The Skia backend renders this with a runtime shader; other backends fall back to a
+   * backdrop blur with a tint and rim highlight. NOTE: like DrawBackdropBlur(), must be called before drawing
+   * anything else within bounds.
+   * @param bounds The glass shape's bounds, in graphics context coordinates
+   * @param cornerRadius The corner radius of the glass shape
+   * @param glass The look of the glass
+   * @param pBlend Optional blend method for compositing the result */
+  virtual void DrawBackdropLiquidGlass(const IRECT& bounds, float cornerRadius, const ILiquidGlass& glass = ILiquidGlass(), const IBlend* pBlend = nullptr);
+
   /** Blurs the contents of a layer using a GPU-accelerated filter. Backend overrides use
    * SkImageFilters::Blur (Skia) or a two-pass GLSL/MPS shader (NanoVG); the base implementation
    * falls back to progressive downsampling. The returned layer has the same bounds as the input.

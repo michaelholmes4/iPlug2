@@ -2253,6 +2253,34 @@ void IGraphics::DrawBackdropBlur(const IRECT& bounds, float blurSize, const IBle
   PathClipRegion();
 }
 
+void IGraphics::DrawBackdropLiquidGlass(const IRECT& bounds, float cornerRadius, const ILiquidGlass& glass, const IBlend* pBlend)
+{
+  // Fallback for backends without a runtime shader: no refraction, just frost, tint and a
+  // rim highlight graded from the lit side of the glass to the far side.
+  if (glass.mFrost > 0.f)
+    DrawBackdropBlur(bounds, glass.mFrost, pBlend);
+
+  if (glass.mTint.A > 0)
+    FillRoundRect(glass.mTint, bounds, cornerRadius, pBlend);
+
+  if (glass.mLightIntensity > 0.f)
+  {
+    const float angle = DegToRad(glass.mLightAngle);
+    const float dx = std::sin(angle) * bounds.W() * 0.5f;
+    const float dy = -std::cos(angle) * bounds.H() * 0.5f;
+    const float cx = bounds.MW();
+    const float cy = bounds.MH();
+    const int lit = Clip(static_cast<int>(glass.mLightIntensity * 255.f), 0, 255);
+
+    IPattern rim = IPattern::CreateLinearGradient(cx + dx, cy + dy, cx - dx, cy - dy);
+    rim.AddStop(IColor(lit, 255, 255, 255), 0.f);
+    rim.AddStop(IColor(lit / 5, 255, 255, 255), 0.5f);
+    rim.AddStop(IColor(lit / 2, 255, 255, 255), 1.f);
+    PathRoundRect(bounds.GetPadded(-0.5f), cornerRadius);
+    PathStroke(rim, 1.f, IStrokeOptions(), pBlend);
+  }
+}
+
 ILayerPtr IGraphics::BlurLayer(const ILayerPtr& layer, float blurSize)
 {
   // Fallback: progressive downsampling via bilinear minification.

@@ -815,6 +815,9 @@ void IGraphicsMac::DeactivateGLContext()
 
 #if defined IGRAPHICS_NANOVG
   #include "IGraphicsNanoVG.cpp"
+  #if defined IGRAPHICS_METAL
+    #include "IGraphicsNanoVG_metal.mm"
+  #endif
 #elif defined IGRAPHICS_SKIA
   #include "IGraphicsSkia.cpp"
 #else

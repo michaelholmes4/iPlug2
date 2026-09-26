@@ -2235,7 +2235,7 @@ void IGraphics::ApplyLayerDropShadow(ILayerPtr& layer, const IShadow& shadow)
   ApplyShadowMask(layer, temp1, shadow);
 }
 
-void IGraphics::DrawBackdropBlur(const IRECT& bounds, float blurSize, const IBlend* pBlend)
+void IGraphics::DrawBackdropBlur(const IRECT& bounds, float blurSize, const IBlend* pBlend, float cornerRadius)
 {
   const float scale = GetBackingPixelScale();
 
@@ -2250,9 +2250,22 @@ void IGraphics::DrawBackdropBlur(const IRECT& bounds, float blurSize, const IBle
 
   layer = BlurLayer(layer, blurSize);
 
-  PathClipRegion(bounds);
-  DrawFittedLayer(layer, r, pBlend);
-  PathClipRegion();
+  if (cornerRadius <= 0.f)
+  {
+    PathClipRegion(bounds);
+    DrawFittedLayer(layer, r, pBlend);
+    PathClipRegion();
+    return;
+  }
+
+  // Clip regions are rectangular, so mask to the rounded rect in a layer instead: fill the shape,
+  // then draw the blur over the whole layer with SrcIn, which keeps it only where the shape was drawn.
+  // (DstIn with the shape drawn last would not work - it leaves pixels outside the shape untouched.)
+  const IBlend srcIn(EBlend::SrcIn, 1.f);
+  StartLayer(nullptr, bounds);
+  FillRoundRect(COLOR_BLACK, bounds, cornerRadius);
+  DrawFittedLayer(layer, r, &srcIn);
+  DrawLayer(EndLayer(), pBlend);
 }
 
 void IGraphics::DrawBackdropLiquidGlass(const IRECT& bounds, float cornerRadius, const ILiquidGlass& glass, const IBlend* pBlend)
@@ -2260,7 +2273,7 @@ void IGraphics::DrawBackdropLiquidGlass(const IRECT& bounds, float cornerRadius,
   // Fallback for backends without a runtime shader: no refraction, just frost, tint and a
   // rim highlight graded from the lit side of the glass to the far side.
   if (glass.mFrost > 0.f)
-    DrawBackdropBlur(bounds, glass.mFrost, pBlend);
+    DrawBackdropBlur(bounds, glass.mFrost, pBlend, cornerRadius);
 
   if (glass.mTint.A > 0)
     FillRoundRect(glass.mTint, bounds, cornerRadius, pBlend);

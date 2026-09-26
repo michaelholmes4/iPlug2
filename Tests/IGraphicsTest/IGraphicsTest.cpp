@@ -104,6 +104,8 @@ IGraphicsTest::IGraphicsTest(const InstanceInfo& info)
     "Mask",
     "DirBrowse",
     "DragNDrop",
+    "BackdropBlur",
+    "BlurLayer",
     "LiquidGlass",
     };
     
@@ -151,7 +153,9 @@ IGraphicsTest::IGraphicsTest(const InstanceInfo& info)
         case 25: pNewControl = new TestMaskControl(testRect, pGraphics->LoadBitmap(SMILEY_FN)); break;
         case 26: pNewControl = new TestDirBrowseControl(testRect, "png", resourcePath.Get()); break;
         case 27: pNewControl = new TestDragAndDropControl(testRect); break;
-        case 28: pNewControl = new TestLiquidGlassControl(testRect); break;
+        case 28: pNewControl = new TestBackdropBlurControl(testRect); break;
+        case 29: pNewControl = new TestBlurLayerControl(testRect, kParamDummy); break;
+        case 30: pNewControl = new TestLiquidGlassControl(testRect); break;
       }
       
       if(pNewControl)

@@ -12,6 +12,7 @@
 
 #ifdef OS_WIN
 #include <sys/stat.h>
+#include "win32_utf8.h"
 #endif
 
 #include "IPlugLogger.h"
@@ -85,8 +86,8 @@ void IPlugAPPHost::CloseWindow()
 bool IPlugAPPHost::InitState()
 {
 #if defined OS_WIN
-  TCHAR strPath[MAX_PATH_LEN];
-  SHGetFolderPathA( NULL, CSIDL_LOCAL_APPDATA, NULL, 0, strPath );
+  char strPath[MAX_PATH_LEN];
+  SHGetSpecialFolderPathUTF8(NULL, strPath, MAX_PATH_LEN, CSIDL_LOCAL_APPDATA, FALSE);
   mINIPath.SetFormatted(MAX_PATH_LEN, "%s\\%s\\", strPath, BUNDLE_NAME);
 #elif defined OS_MAC
   mINIPath.SetFormatted(MAX_PATH_LEN, "%s/Library/Application Support/%s/", getenv("HOME"), BUNDLE_NAME);
@@ -274,12 +275,15 @@ int IPlugAPPHost::GetMIDIPortNumber(ERoute direction, const char* nameToTest) co
 
 void IPlugAPPHost::ProbeAudioIO()
 {
+  mAudioInputDevIDs.clear();
+  mAudioOutputDevIDs.clear();
+
+  if (!mDAC)
+    return;
+
   DBGMSG("\nRtAudio Version %s", RtAudio::getVersion().c_str());
 
   RtAudio::DeviceInfo info;
-
-  mAudioInputDevIDs.clear();
-  mAudioOutputDevIDs.clear();
 
   auto deviceIDs = mDAC->getDeviceIds();
 
@@ -373,11 +377,15 @@ bool IPlugAPPHost::MIDISettingsInStateAreEqual(AppState& os, AppState& ns)
 bool IPlugAPPHost::TryToChangeAudioDriverType()
 {
   CloseAudio();
-  
+
   if (mDAC)
   {
     mDAC = nullptr;
   }
+
+  // Skip RtAudio initialization in no-I/O mode or screenshot mode
+  if (mNoIO || IsScreenshotMode())
+    return true;
 
 #if defined OS_WIN
   if (mState.mAudioDriverType == kDeviceASIO)
@@ -404,6 +412,10 @@ bool IPlugAPPHost::TryToChangeAudioDriverType()
 
 bool IPlugAPPHost::TryToChangeAudio()
 {
+  // Skip audio initialization in no-I/O mode or screenshot mode
+  if (mNoIO || IsScreenshotMode())
+    return true;
+
 #if defined OS_WIN
   // ASIO has one device, use the output for the input ID
   auto inputID = GetAudioDeviceID(mState.mAudioDriverType == kDeviceASIO ? mState.mAudioOutDev.Get() : mState.mAudioInDev.Get());
@@ -634,6 +646,10 @@ bool IPlugAPPHost::InitAudio(uint32_t inID, uint32_t outID, uint32_t sr, uint32_
 
 bool IPlugAPPHost::InitMidi()
 {
+  // Skip MIDI initialization in no-I/O mode or screenshot mode
+  if (mNoIO || IsScreenshotMode())
+    return true;
+
   try
   {
     mMidiIn = std::make_unique<RtMidiIn>();

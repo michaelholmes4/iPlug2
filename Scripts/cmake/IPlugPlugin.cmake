@@ -24,22 +24,25 @@ iplug_add_plugin(<name>
 )
 
 Format names:
-  APP      - Standalone application (no embedded AUv3 by default)
-  VST2     - VST2 plugin (if SDK available) - DEPRECATED
-  VST3     - VST3 plugin
-  CLAP     - CLAP plugin (if SDK available)
-  AAX      - AAX plugin (if SDK available)
-  AU       - AUv2 (macOS only)
-  AUV3     - AUv3 with framework/appex/embedding (macOS + iOS) - OPT-IN
-  WAM      - Web Audio Module (Emscripten only)
+  APP        - Standalone application (no embedded AUv3 by default)
+  VST2       - VST2 plugin (if SDK available) - DEPRECATED
+  VST3       - VST3 plugin
+  CLAP       - CLAP plugin (if SDK available)
+  AAX        - AAX plugin (if SDK available)
+  AU         - AUv2 (macOS only)
+  AUV3       - AUv3 with framework/appex/embedding (macOS + iOS) - OPT-IN
+  WAM        - Web Audio Module (Emscripten only)
+  WASM_DSP   - Wasm Web DSP module (AudioWorklet, Emscripten only)
+  WASM_UI    - Wasm Web UI module (IGraphics on main thread, Emscripten only)
 
 Format groups:
-  ALL            - All formats (APP, VST2, VST3, CLAP, AAX, AU, AUV3, WAM)
-  ALL_PLUGINS    - All plugin formats without APP (VST2, VST3, CLAP, AAX, AU, AUV3, WAM)
+  ALL            - All formats (APP, VST2, VST3, CLAP, AAX, AU, AUV3, WAM, WASM_DSP, WASM_UI)
+  ALL_PLUGINS    - All plugin formats without APP (VST2, VST3, CLAP, AAX, AU, AUV3, WAM, WASM_DSP, WASM_UI)
   ALL_DESKTOP    - All desktop formats including AUv3 (APP, VST2, VST3, CLAP, AAX, AU, AUV3)
   MINIMAL_PLUGINS - Core plugin formats (VST3, CLAP, AU)
   DESKTOP        - Desktop formats without AUv3/VST2 (APP, VST3, CLAP, AAX, AU)
-  WEB            - Web formats only (WAM)
+  WEB            - Web formats only (WAM, WASM_DSP, WASM_UI)
+  WASM           - Both Wasm modules (WASM_DSP, WASM_UI)
 #]=============================================================================]
 
 # ============================================================================
@@ -49,9 +52,9 @@ function(_iplug_expand_formats input_formats output_var)
   set(result)
   foreach(fmt ${input_formats})
     if(fmt STREQUAL "ALL")
-      list(APPEND result APP VST2 VST3 CLAP AAX AU AUV3 WAM)
+      list(APPEND result APP VST2 VST3 CLAP AAX AU AUV3 WAM WASM_DSP WASM_UI)
     elseif(fmt STREQUAL "ALL_PLUGINS")
-      list(APPEND result VST2 VST3 CLAP AAX AU AUV3 WAM)
+      list(APPEND result VST2 VST3 CLAP AAX AU AUV3 WAM WASM_DSP WASM_UI)
     elseif(fmt STREQUAL "ALL_DESKTOP")
       list(APPEND result APP VST2 VST3 CLAP AAX AU AUV3)
     elseif(fmt STREQUAL "MINIMAL_PLUGINS")
@@ -59,7 +62,9 @@ function(_iplug_expand_formats input_formats output_var)
     elseif(fmt STREQUAL "DESKTOP")
       list(APPEND result APP VST3 CLAP AAX AU)
     elseif(fmt STREQUAL "WEB")
-      list(APPEND result WAM)
+      list(APPEND result WAM WASM_DSP WASM_UI)
+    elseif(fmt STREQUAL "WASM")
+      list(APPEND result WASM_DSP WASM_UI)
     else()
       list(APPEND result ${fmt})
     endif()
@@ -200,13 +205,15 @@ function(_iplug_create_auv3_targets plugin_name formats sources ui_lib resources
   endif()
 
   # Framework containing AUv3 plugin code
-  # Note: Resources are NOT added to the framework - the appex loads them
-  # from the parent app's Resources folder (see IPlugPaths.mm)
   add_library(${plugin_name}AU-framework SHARED ${sources})
   iplug_add_target(${plugin_name}AU-framework PUBLIC
     LINK iPlug2::AUv3 ${ui_lib} ${base_lib}
   )
   iplug_configure_target(${plugin_name}AU-framework AUv3Framework ${plugin_name})
+  # Add resources to framework for macOS sandbox compatibility
+  # (AUv3 appex cannot access container app's resources in sandbox)
+  _iplug_add_resources(${plugin_name}AU-framework "${resources}")
+  _iplug_add_web_resources(${plugin_name}AU-framework "${web_resources}")
 
   # App Extension (appex) - executable using NSExtensionMain entry point
   iplug_get_auv3appex_source(${plugin_name} APPEX_SOURCE)
@@ -284,7 +291,7 @@ function(_iplug_create_wam_targets plugin_name formats sources site_origin base_
   iplug_add_target(${plugin_name}-web PUBLIC
     LINK iPlug2::Web ${base_lib}
   )
-  iplug_configure_target(${plugin_name}-web Web ${plugin_name})
+  iplug_configure_target(${plugin_name}-web WEB ${plugin_name})
 
   # Combined WAM distribution target
   iplug_build_wam_dist(${plugin_name}
@@ -292,6 +299,69 @@ function(_iplug_create_wam_targets plugin_name formats sources site_origin base_
     WEB_TARGET ${plugin_name}-web
     SITE_ORIGIN "${site_origin}"
   )
+endfunction()
+
+# ============================================================================
+# Create Wasm Web targets (Emscripten only).
+# ============================================================================
+function(_iplug_create_wasm_targets plugin_name formats sources base_lib ui_type web_resources)
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    return()
+  endif()
+
+  set(_want_wasm_dsp FALSE)
+  set(_want_wasm_ui FALSE)
+  if("WASM_DSP" IN_LIST formats)
+    set(_want_wasm_dsp TRUE)
+  endif()
+  if("WASM_UI" IN_LIST formats)
+    set(_want_wasm_ui TRUE)
+  endif()
+
+  if(NOT _want_wasm_dsp AND NOT _want_wasm_ui)
+    return()
+  endif()
+
+  if(_want_wasm_dsp)
+    add_executable(${plugin_name}-wasm-dsp ${sources})
+    iplug_add_target(${plugin_name}-wasm-dsp PUBLIC
+      LINK iPlug2::WasmDSP ${base_lib}
+    )
+    iplug_configure_wasm_dsp(${plugin_name}-wasm-dsp ${plugin_name})
+    iplug_build_wasm_dsp_dist(${plugin_name}
+      DSP_TARGET ${plugin_name}-wasm-dsp
+    )
+  endif()
+
+  if(_want_wasm_ui)
+    if(ui_type STREQUAL "WEBVIEW")
+      add_executable(${plugin_name}-wasm-ui ${sources})
+      iplug_add_target(${plugin_name}-wasm-ui PUBLIC
+        LINK iPlug2::WasmUI iPlug2::WebView ${base_lib}
+      )
+      iplug_configure_wasm_ui(${plugin_name}-wasm-ui ${plugin_name})
+      iplug_build_wasm_webview_ui_dist(${plugin_name}
+        UI_TARGET ${plugin_name}-wasm-ui
+        WEB_RESOURCES ${web_resources}
+      )
+    else()
+      add_executable(${plugin_name}-wasm-ui ${sources})
+      iplug_add_target(${plugin_name}-wasm-ui PUBLIC
+        LINK iPlug2::WasmUI ${base_lib}
+      )
+      iplug_configure_wasm_ui(${plugin_name}-wasm-ui ${plugin_name})
+      iplug_build_wasm_ui_dist(${plugin_name}
+        UI_TARGET ${plugin_name}-wasm-ui
+      )
+    endif()
+  endif()
+
+  if(_want_wasm_dsp AND _want_wasm_ui)
+    iplug_build_wasm_dist(${plugin_name}
+      DSP_TARGET ${plugin_name}-wasm-dsp
+      UI_TARGET ${plugin_name}-wasm-ui
+    )
+  endif()
 endfunction()
 
 # ============================================================================
@@ -367,8 +437,8 @@ macro(iplug_add_plugin plugin_name)
   endif()
 
   # Validate FORMATS
-  set(_iplug_valid_formats APP VST2 VST3 CLAP AAX AU AUV3 WAM)
-  set(_iplug_valid_format_groups ALL ALL_PLUGINS ALL_DESKTOP MINIMAL_PLUGINS DESKTOP WEB)
+  set(_iplug_valid_formats APP VST2 VST3 CLAP AAX AU AUV3 WAM WASM_DSP WASM_UI)
+  set(_iplug_valid_format_groups ALL ALL_PLUGINS ALL_DESKTOP MINIMAL_PLUGINS DESKTOP WEB WASM)
   if(PLUGIN_FORMATS)
     foreach(_fmt ${PLUGIN_FORMATS})
       if(NOT _fmt IN_LIST _iplug_valid_formats AND NOT _fmt IN_LIST _iplug_valid_format_groups)
@@ -431,4 +501,5 @@ macro(iplug_add_plugin plugin_name)
   _iplug_create_auv3_targets(${plugin_name} "${_iplug_formats}" "${PLUGIN_SOURCES}" "${_iplug_ui_lib}" "${PLUGIN_RESOURCES}" "${PLUGIN_WEB_RESOURCES}" "_${plugin_name}-base")
   _iplug_create_ios_targets(${plugin_name} "${_iplug_formats}" "${PLUGIN_SOURCES}" "${_iplug_ui_lib}" "${PLUGIN_RESOURCES}" "${PLUGIN_WEB_RESOURCES}" "_${plugin_name}-base")
   _iplug_create_wam_targets(${plugin_name} "${_iplug_formats}" "${PLUGIN_SOURCES}" "${PLUGIN_WAM_SITE_ORIGIN}" "_${plugin_name}-base")
+  _iplug_create_wasm_targets(${plugin_name} "${_iplug_formats}" "${PLUGIN_SOURCES}" "_${plugin_name}-base" "${PLUGIN_UI}" "${PLUGIN_WEB_RESOURCES}")
 endmacro()

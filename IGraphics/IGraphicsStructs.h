@@ -2405,6 +2405,43 @@ struct IShadow
   bool mDrawForeground = true;
 };
 
+/** Used to specify the look of an "Apple liquid glass" style backdrop. Use with IGraphics::DrawBackdropLiquidGlass().
+ * Parameters mirror Figma's Glass effect: light, refraction, depth, dispersion and frost */
+struct ILiquidGlass
+{
+  ILiquidGlass() {}
+
+  /** Create an ILiquidGlass
+   * @param refraction How strongly the curved edge bends what's behind it (0-2, 1 is glass, above exaggerates it)
+   * @param depth Width in points of the curved bezel around the edge - the apparent thickness of the glass
+   * @param dispersion Chromatic aberration at the edge (0-1)
+   * @param frost Backdrop blur radius in points, 0 for clear glass
+   * @param lightAngle Direction the rim light comes from, in degrees clockwise from 12 o'clock
+   * @param lightIntensity Strength of the rim highlight (0-1)
+   * @param tint Color laid over the glass, its alpha sets the amount */
+  ILiquidGlass(float refraction, float depth, float dispersion, float frost, float lightAngle, float lightIntensity, const IColor& tint = COLOR_TRANSPARENT)
+  : mRefraction(refraction)
+  , mDepth(depth)
+  , mDispersion(dispersion)
+  , mFrost(frost)
+  , mLightAngle(lightAngle)
+  , mLightIntensity(lightIntensity)
+  , mTint(tint)
+  {}
+
+  float mRefraction = 0.8f;
+  float mDepth = 16.f;
+  float mDispersion = 0.4f;
+  float mFrost = 2.f;
+  float mLightAngle = -45.f;
+  float mLightIntensity = 0.7f;
+  IColor mTint = COLOR_TRANSPARENT;
+  /** Saturation of the backdrop seen through the glass, 1 leaves it unchanged */
+  float mSaturation = 1.4f;
+  /** Brightness added to the backdrop seen through the glass (-1 to 1) */
+  float mBrightness = 0.f;
+};
+
 /** Contains a set of 9 colors used to theme IVControls */
 struct IVColorSpec
 {

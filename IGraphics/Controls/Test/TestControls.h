@@ -44,3 +44,4 @@
 #include "TestMaskControl.h"
 #include "TestDirBrowseControl.h"
 #include "TestDragNDropControl.h"
+#include "TestLiquidGlassControl.h"

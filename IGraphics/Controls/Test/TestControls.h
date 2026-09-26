@@ -44,4 +44,6 @@
 #include "TestMaskControl.h"
 #include "TestDirBrowseControl.h"
 #include "TestDragNDropControl.h"
+#include "TestBackdropBlurControl.h"
+#include "TestBlurLayerControl.h"
 #include "TestLiquidGlassControl.h"

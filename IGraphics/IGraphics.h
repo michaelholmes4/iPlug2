@@ -572,13 +572,14 @@ public:
    * within bounds, since it captures whatever has been drawn so far this frame.
    * @param bounds The region to capture and blur, in graphics context coordinates
    * @param blurSize The approximate blur radius in points
-   * @param pBlend Optional blend method for compositing the blurred result */
-  void DrawBackdropBlur(const IRECT& bounds, float blurSize, const IBlend* pBlend = nullptr);
+   * @param pBlend Optional blend method for compositing the blurred result
+   * @param cornerRadius Optional corner radius, to confine the blur to a rounded rect within bounds */
+  void DrawBackdropBlur(const IRECT& bounds, float blurSize, const IBlend* pBlend = nullptr, float cornerRadius = 0.f);
 
   /** Captures the contents of the canvas already drawn this frame and draws it back through an "Apple liquid glass"
    * style lens: a rounded rect whose curved bezel refracts the backdrop, with optional chromatic dispersion, frost,
-   * tint and rim lighting. The Skia backend renders this with a runtime shader; other backends fall back to a
-   * backdrop blur with a tint and rim highlight. NOTE: like DrawBackdropBlur(), must be called before drawing
+   * tint and rim lighting. Skia renders this with a runtime shader, and NanoVG with an equivalent GL3/GLES3 or Metal
+   * shader; other renderers (NanoVG GL2/GLES2) fall back to a backdrop blur with a tint and rim highlight. NOTE: like DrawBackdropBlur(), must be called before drawing
    * anything else within bounds.
    * @param bounds The glass shape's bounds, in graphics context coordinates
    * @param cornerRadius The corner radius of the glass shape

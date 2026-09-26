@@ -12,6 +12,7 @@
 #include <cstring>
 
 #include "IGraphicsNanoVG.h"
+#include "IGraphicsNanoVG_glass.h"
 #include "ITextEntryControl.h"
 
 #if defined IGRAPHICS_GL
@@ -525,6 +526,18 @@ void IGraphicsNanoVG::OnViewDestroyed()
     glDeleteVertexArrays(1, &mBlurShader.vao);
     mBlurShader = {};
   }
+
+  if (mGlassShader.initialized)
+  {
+    glDeleteProgram(mGlassShader.program);
+    glDeleteBuffers(1, &mGlassShader.vbo);
+    glDeleteVertexArrays(1, &mGlassShader.vao);
+  }
+  mGlassShader = {};
+#endif
+
+#ifdef IGRAPHICS_METAL
+  _ReleaseMetalResources();
 #endif
 
   if(mMainFrameBuffer != nullptr)
@@ -1004,12 +1017,10 @@ static const char kBlurFS[] =
   "  FragColor = color / max(weight, 0.0001);\n"
   "}";
 
-void IGraphicsNanoVG::_InitBlurShader()
+// Compiles and links a GL program, returning 0 on failure
+static GLuint CreateGLProgram(const char* vsSrc, const char* fsSrc, const char* name)
 {
-  if (mBlurShader.initialized)
-    return;
-
-  auto compileShader = [](GLenum type, const char* src) -> GLuint {
+  auto compileShader = [name](GLenum type, const char* src) -> GLuint {
     GLuint shader = glCreateShader(type);
     glShaderSource(shader, 1, &src, nullptr);
     glCompileShader(shader);
@@ -1021,16 +1032,16 @@ void IGraphicsNanoVG::_InitBlurShader()
       glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &len);
       std::string log(len, '\0');
       glGetShaderInfoLog(shader, len, nullptr, log.data());
-      DBGMSG("Blur shader compile error: %s\n", log.c_str());
+      DBGMSG("%s shader compile error: %s\n", name, log.c_str());
       glDeleteShader(shader);
       return 0;
     }
     return shader;
   };
 
-  GLuint vs = compileShader(GL_VERTEX_SHADER, kBlurVS);
-  GLuint fs = compileShader(GL_FRAGMENT_SHADER, kBlurFS);
-  if (!vs || !fs) { glDeleteShader(vs); glDeleteShader(fs); return; }
+  GLuint vs = compileShader(GL_VERTEX_SHADER, vsSrc);
+  GLuint fs = compileShader(GL_FRAGMENT_SHADER, fsSrc);
+  if (!vs || !fs) { glDeleteShader(vs); glDeleteShader(fs); return 0; }
 
   GLuint program = glCreateProgram();
   glAttachShader(program, vs);
@@ -1041,30 +1052,89 @@ void IGraphicsNanoVG::_InitBlurShader()
 
   GLint ok = 0;
   glGetProgramiv(program, GL_LINK_STATUS, &ok);
-  if (!ok) { glDeleteProgram(program); return; }
+  if (!ok) { glDeleteProgram(program); return 0; }
 
-  mBlurShader.program = program;
-  mBlurShader.uTex    = glGetUniformLocation(program, "uTex");
-  mBlurShader.uDir    = glGetUniformLocation(program, "uDir");
-  mBlurShader.uRadius = glGetUniformLocation(program, "uRadius");
+  return program;
+}
 
+// Creates a VAO/VBO for a full-viewport quad, feeding the program's aPos attribute
+static void CreateGLQuad(GLuint program, GLuint& vao, GLuint& vbo)
+{
   static const float quadVerts[] = {
     -1.f, -1.f,   1.f, -1.f,   -1.f,  1.f,
      1.f, -1.f,   1.f,  1.f,   -1.f,  1.f,
   };
 
-  glGenVertexArrays(1, &mBlurShader.vao);
-  glBindVertexArray(mBlurShader.vao);
-  glGenBuffers(1, &mBlurShader.vbo);
-  glBindBuffer(GL_ARRAY_BUFFER, mBlurShader.vbo);
+  glGenVertexArrays(1, &vao);
+  glBindVertexArray(vao);
+  glGenBuffers(1, &vbo);
+  glBindBuffer(GL_ARRAY_BUFFER, vbo);
   glBufferData(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, GL_STATIC_DRAW);
   GLint posLoc = glGetAttribLocation(program, "aPos");
   glVertexAttribPointer(posLoc, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
   glEnableVertexAttribArray(posLoc);
   glBindVertexArray(0);
   glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+void IGraphicsNanoVG::_InitBlurShader()
+{
+  if (mBlurShader.initialized)
+    return;
+
+  GLuint program = CreateGLProgram(kBlurVS, kBlurFS, "Blur");
+  if (!program)
+    return;
+
+  mBlurShader.program = program;
+  mBlurShader.uTex    = glGetUniformLocation(program, "uTex");
+  mBlurShader.uDir    = glGetUniformLocation(program, "uDir");
+  mBlurShader.uRadius = glGetUniformLocation(program, "uRadius");
+  CreateGLQuad(program, mBlurShader.vao, mBlurShader.vbo);
 
   mBlurShader.initialized = true;
+}
+
+void IGraphicsNanoVG::_InitGlassShader()
+{
+  if (mGlassShader.initialized || mGlassShader.failed)
+    return;
+
+  // GL FBO rows run bottom-up, so flip y to get top-left-origin pixels and texture coordinates
+  std::string fs =
+#ifdef IGRAPHICS_GLES3
+    "#version 300 es\n"
+    "precision highp float;\n"
+#else
+    "#version 330 core\n"
+#endif
+    "out vec4 FragColor;\n"
+    "uniform sampler2D uTex;\n"
+    "uniform float uParams[" + std::to_string(kNumLGParams) + "];\n"
+    "#define float2 vec2\n"
+    "#define float3 vec3\n"
+    "#define float4 vec4\n"
+    "#define P(i) uParams[i]\n"
+    "#define PIX vec2(gl_FragCoord.x, P(4) - gl_FragCoord.y)\n"
+    "#define SAMPLE(pt) texture(uTex, vec2(((pt).x - P(0)) * P(2) / P(3), 1.0 - ((pt).y - P(1)) * P(2) / P(4)))\n";
+  fs += kLiquidGlassFunctions;
+  fs += "void main()\n{\n";
+  fs += kLiquidGlassBody;
+  fs += "  FragColor = result;\n}\n";
+
+  GLuint program = CreateGLProgram(kBlurVS, fs.c_str(), "Liquid glass");
+  if (!program)
+  {
+    mGlassShader.failed = true; // don't retry every frame
+    return;
+  }
+
+  mGlassShader.program = program;
+  mGlassShader.uTex    = glGetUniformLocation(program, "uTex");
+  mGlassShader.uParams = glGetUniformLocation(program, "uParams");
+  CreateGLQuad(program, mGlassShader.vao, mGlassShader.vbo);
+
+  mGlassShader.initialized = true;
 }
 
 #endif // IGRAPHICS_GL && !GL2 && !GLES2
@@ -1153,6 +1223,138 @@ ILayerPtr IGraphicsNanoVG::BlurLayer(const ILayerPtr& layer, float blurSize)
   return IGraphics::BlurLayer(layer, blurSize);
 
 #endif
+}
+
+ILayerPtr IGraphicsNanoVG::_LiquidGlassLayer(const ILayerPtr& layer, const float* params)
+{
+#if defined IGRAPHICS_GL && !defined IGRAPHICS_GL2 && !defined IGRAPHICS_GLES2
+
+  _InitGlassShader();
+  if (!mGlassShader.initialized)
+    return nullptr;
+
+  const Bitmap* pSrcBmp = static_cast<const Bitmap*>(layer->GetAPIBitmap());
+  NVGframebuffer* srcFBO = pSrcBmp ? pSrcBmp->GetFBO() : nullptr;
+  if (!srcFBO)
+    return nullptr;
+
+  const int w = pSrcBmp->GetWidth();
+  const int h = pSrcBmp->GetHeight();
+
+  NVGframebuffer* dstFBO = nvgCreateFramebuffer(mVG, w, h, 0);
+  if (!dstFBO)
+    return nullptr;
+
+  // Same raw GL pass as BlurLayer(): step outside NanoVG's frame, draw a full-viewport quad, then resume
+  nvgEndFrame(mVG);
+
+  GLint savedVP[4];
+  glGetIntegerv(GL_VIEWPORT, savedVP);
+
+  glDisable(GL_BLEND);
+  glDisable(GL_STENCIL_TEST);
+  glUseProgram(mGlassShader.program);
+  glUniform1i(mGlassShader.uTex, 0);
+  glUniform1fv(mGlassShader.uParams, kNumLGParams, params);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, srcFBO->texture);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glBindVertexArray(mGlassShader.vao);
+
+  glBindFramebuffer(GL_FRAMEBUFFER, dstFBO->fbo);
+  glViewport(0, 0, w, h);
+  glClearColor(0.f, 0.f, 0.f, 0.f);
+  glClear(GL_COLOR_BUFFER_BIT);
+  glDrawArrays(GL_TRIANGLES, 0, 6);
+
+  glBindVertexArray(0);
+  glEnable(GL_BLEND);
+  glViewport(savedVP[0], savedVP[1], savedVP[2], savedVP[3]);
+  glBindFramebuffer(GL_FRAMEBUFFER, mMainFrameBuffer->fbo);
+  nvgBeginFrame(mVG, WindowWidth(), WindowHeight(), GetScreenScale());
+
+  APIBitmap* pDstBmp = new Bitmap(this, mVG, dstFBO, w, h, pSrcBmp->GetScale(), (float)pSrcBmp->GetDrawScale());
+  return std::make_unique<ILayer>(pDstBmp, layer->Bounds(), nullptr, IRECT());
+
+#elif defined IGRAPHICS_METAL
+
+  return _LiquidGlassLayerMetal(layer, params);
+
+#else
+
+  return nullptr;
+
+#endif
+}
+
+void IGraphicsNanoVG::DrawBackdropLiquidGlass(const IRECT& bounds, float cornerRadius, const ILiquidGlass& glass, const IBlend* pBlend)
+{
+  if (bounds.Empty())
+    return;
+
+  // Mirrors IGraphicsSkia::DrawBackdropLiquidGlass()
+  const float scale = GetBackingPixelScale();
+  const float halfW = bounds.W() * 0.5f;
+  const float halfH = bounds.H() * 0.5f;
+  const float maxRadius = std::min(halfW, halfH);
+  const float radius = Clip(cornerRadius, 0.f, maxRadius);
+  const float depth = Clip(glass.mDepth, 0.5f, maxRadius);
+
+  // Refraction only samples inward, so the capture just needs padding for the frost blur's context
+  const IRECT r = bounds.GetPadded(std::max(0.f, glass.mFrost)).Intersect(GetBounds()).GetPixelAligned(scale);
+
+  ILayerPtr layer(new ILayer(SnapshotCanvas(r), r, nullptr, IRECT()));
+
+  if (!layer->GetAPIBitmap())
+    return;
+
+  if (glass.mFrost > 0.f)
+    layer = BlurLayer(layer, glass.mFrost);
+
+  const APIBitmap* pBmp = layer->GetAPIBitmap();
+  const float lightAngle = DegToRad(glass.mLightAngle);
+  const float tintA = glass.mTint.A / 255.f;
+
+  float params[kNumLGParams];
+  params[kLGOriginX] = r.L;
+  params[kLGOriginY] = r.T;
+  params[kLGScale] = static_cast<float>(pBmp->GetWidth()) / r.W();
+  params[kLGTexW] = static_cast<float>(pBmp->GetWidth());
+  params[kLGTexH] = static_cast<float>(pBmp->GetHeight());
+  params[kLGCenterX] = bounds.MW();
+  params[kLGCenterY] = bounds.MH();
+  params[kLGHalfW] = halfW;
+  params[kLGHalfH] = halfH;
+  params[kLGRadius] = radius;
+  params[kLGNormalRadius] = std::max(radius, std::min(depth, maxRadius));
+  params[kLGDepth] = depth;
+  params[kLGRefraction] = Clip(glass.mRefraction, 0.f, 2.f);
+  params[kLGDispersion] = Clip(glass.mDispersion, 0.f, 1.f);
+  params[kLGLightX] = std::sin(lightAngle);
+  params[kLGLightY] = -std::cos(lightAngle);
+  params[kLGLightIntensity] = Clip(glass.mLightIntensity, 0.f, 1.f);
+  params[kLGSaturation] = std::max(0.f, glass.mSaturation);
+  params[kLGBrightness] = glass.mBrightness;
+  params[kLGTintR] = glass.mTint.R / 255.f * tintA;
+  params[kLGTintG] = glass.mTint.G / 255.f * tintA;
+  params[kLGTintB] = glass.mTint.B / 255.f * tintA;
+  params[kLGTintA] = tintA;
+
+  ILayerPtr lens = _LiquidGlassLayer(layer, params);
+
+  // The raw GPU pass restarts NanoVG's frame, which resets the clip region and transform
+  PathClipRegion();
+
+  if (!lens)
+  {
+    IGraphics::DrawBackdropLiquidGlass(bounds, cornerRadius, glass, pBlend);
+    return;
+  }
+
+  DrawFittedLayer(lens, r, pBlend);
 }
 
 void IGraphicsNanoVG::DrawFastDropShadow(const IRECT& innerBounds, const IRECT& outerBounds, float xyDrop, float roundness, float blur, IBlend* pBlend)

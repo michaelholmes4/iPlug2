@@ -110,6 +110,7 @@ public:
   void DrawFastDropShadow(const IRECT& innerBounds, const IRECT& outerBounds, float xyDrop = 5.f, float roundness = 0.f, float blur = 10.f, IBlend* pBlend = nullptr) override;
 
   ILayerPtr BlurLayer(const ILayerPtr& layer, float blurSize) override;
+  void DrawBackdropLiquidGlass(const IRECT& bounds, float cornerRadius, const ILiquidGlass& glass, const IBlend* pBlend) override;
   
   void DrawMultiLineText(const IText& text, const char* str, const IRECT& bounds, const IBlend* pBlend) override;
   
@@ -173,11 +174,29 @@ private:
     bool   initialized = false;
   } mBlurShader;
   void _InitBlurShader();
+
+  struct GlassShader {
+    GLuint program = 0, vao = 0, vbo = 0;
+    GLint  uTex = -1, uParams = -1;
+    bool   initialized = false;
+    bool   failed = false;
+  } mGlassShader;
+  void _InitGlassShader();
 #endif
 
 #ifdef IGRAPHICS_METAL
   ILayerPtr _BlurLayerMetal(const ILayerPtr& layer, float blurSize);
+  ILayerPtr _LiquidGlassLayerMetal(const ILayerPtr& layer, const float* params);
+  void _ReleaseMetalResources();
+  void* mGlassPipeline = nullptr; // id<MTLComputePipelineState>, retained
+  bool mGlassPipelineFailed = false;
 #endif
+
+  /** Runs the liquid glass lens shader over a backdrop layer. The result is the same size as the layer and
+   * transparent outside the glass shape. Returns nullptr if the backend cannot, so the caller can fall back.
+   * @param layer The backdrop, captured (and optionally blurred) around the glass
+   * @param params ELiquidGlassParam values, see IGraphicsNanoVG_glass.h */
+  ILayerPtr _LiquidGlassLayer(const ILayerPtr& layer, const float* params);
   
   bool mInDraw = false;
   WDL_Mutex mFBOMutex;

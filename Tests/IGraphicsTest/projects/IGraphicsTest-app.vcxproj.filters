@@ -341,6 +341,18 @@
     <ClInclude Include="..\..\..\IGraphics\Controls\Test\TestDragNDropControl.h">
       <Filter>IGraphics\Controls\Test</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\IGraphics\Controls\Test\TestBackdropBlurControl.h">
+      <Filter>IGraphics\Controls\Test</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\IGraphics\Controls\Test\TestBlurLayerControl.h">
+      <Filter>IGraphics\Controls\Test</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\IGraphics\Controls\Test\TestLiquidGlassControl.h">
+      <Filter>IGraphics\Controls\Test</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\IGraphics\Controls\Test\TestSliderBank.h">
+      <Filter>IGraphics\Controls\Test</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="resources">

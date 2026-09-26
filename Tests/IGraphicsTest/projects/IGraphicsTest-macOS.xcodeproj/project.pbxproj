@@ -792,6 +792,10 @@
 		4FDAC0E8207D76C600299363 /* IPlugQueue.h */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 2; lastKnownFileType = sourcecode.c.h; name = IPlugQueue.h; path = ../../../IPlug/IPlugQueue.h; sourceTree = "<group>"; tabWidth = 2; };
 		4FDAC0E9207D76C600299363 /* IPlugTimer.h */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 2; lastKnownFileType = sourcecode.c.h; name = IPlugTimer.h; path = ../../../IPlug/IPlugTimer.h; sourceTree = "<group>"; tabWidth = 2; };
 		4FDE12E32B1CE04B00326BF2 /* TestDragNDropControl.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TestDragNDropControl.h; sourceTree = "<group>"; };
+		4FB1A0012E90000000A1B001 /* TestBackdropBlurControl.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TestBackdropBlurControl.h; sourceTree = "<group>"; };
+		4FB1A0022E90000000A1B001 /* TestBlurLayerControl.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TestBlurLayerControl.h; sourceTree = "<group>"; };
+		4FB1A0032E90000000A1B001 /* TestLiquidGlassControl.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TestLiquidGlassControl.h; sourceTree = "<group>"; };
+		4FB1A0042E90000000A1B001 /* TestSliderBank.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TestSliderBank.h; sourceTree = "<group>"; };
 		4FE599CB232032390012B628 /* TestCursorControl.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TestCursorControl.h; sourceTree = "<group>"; };
 		4FE599CC232032390012B628 /* TestSizeControl.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TestSizeControl.h; sourceTree = "<group>"; };
 		4FE599CD232032390012B628 /* TestAnimationControl.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TestAnimationControl.h; sourceTree = "<group>"; };
@@ -1660,6 +1664,10 @@
 			isa = PBXGroup;
 			children = (
 				4FDE12E32B1CE04B00326BF2 /* TestDragNDropControl.h */,
+				4FB1A0012E90000000A1B001 /* TestBackdropBlurControl.h */,
+				4FB1A0022E90000000A1B001 /* TestBlurLayerControl.h */,
+				4FB1A0032E90000000A1B001 /* TestLiquidGlassControl.h */,
+				4FB1A0042E90000000A1B001 /* TestSliderBank.h */,
 				4F3439452417A99C00960500 /* TestMaskControl.h */,
 				4F1C2D3E23D72FF60088AE84 /* TestFlexBoxControl.h */,
 				4FE599CB232032390012B628 /* TestCursorControl.h */,

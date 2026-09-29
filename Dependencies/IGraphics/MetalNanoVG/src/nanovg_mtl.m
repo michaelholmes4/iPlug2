@@ -1457,7 +1457,15 @@ error:
     textureSize = (vector_uint2){(uint)colorTexture.width,
                                  (uint)colorTexture.height};
   }
-  if (textureSize.x == 0 || textureSize.y == 0) return;
+  // Every exit from here on must commit: the buffer was enqueued above, and an
+  // enqueued buffer that is never committed blocks every buffer behind it on
+  // the queue, and never runs the completed handler that clears isBusy and
+  // signals the semaphore - so the next mnvgImageHandle()/waitUntilCompleted
+  // or renderViewport hangs forever. Committing it empty just skips the frame.
+  if (textureSize.x == 0 || textureSize.y == 0) {
+    [commandBuffer commit];
+    return;
+  }
   [self updateStencilTextureToSize:&textureSize];
 
   id<CAMetalDrawable> drawable = nil;
@@ -1467,6 +1475,8 @@ error:
   }
   _renderEncoder = [self renderCommandEncoderWithColorTexture:colorTexture];
   if (_renderEncoder == nil) {
+    // No drawable in time, or no texture: see the commit note above.
+    [commandBuffer commit];
     return;
   }
   MNVGcall* call = &buffers.calls[0];

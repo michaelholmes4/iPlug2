@@ -465,6 +465,18 @@ void IGraphicsSkia::DrawResize()
   if (mGrContext.get())
   {
     SkImageInfo info = SkImageInfo::MakeN32Premul(w, h);
+    // IGRAPHICS_SKIA_MSAA_SAMPLES > 1 multisamples the main surface. Without
+    // it Ganesh anti-aliases any path that isn't a simple shape by rasterising
+    // a coverage mask on the CPU, at a cost that grows with the area filled -
+    // for a UI that fills large paths every frame (a full-window scrolling
+    // waveform) that is most of the frame. With it, those paths tessellate on
+    // the GPU instead. Off by default: it costs 4x the surface memory and a
+    // resolve per snapshot, and edges are sampled rather than analytic.
+#if defined(IGRAPHICS_SKIA_MSAA_SAMPLES) && IGRAPHICS_SKIA_MSAA_SAMPLES > 1
+    mSurface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info, IGRAPHICS_SKIA_MSAA_SAMPLES,
+                                        kTopLeft_GrSurfaceOrigin, nullptr);
+    if (!mSurface)
+#endif
     mSurface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
   }
 #else
@@ -907,6 +919,13 @@ void IGraphicsSkia::RenderPath(SkPaint& paint)
   }
   else
   {
+    // Volatile, as the transformed copy above is: the path is rebuilt from
+    // scratch every time it is drawn. Without the flag Ganesh treats it as one
+    // it may see again, and caches the software-rasterised mask of every large
+    // anti-aliased path it draws in a new GPU texture - which, for a path that
+    // changes every frame (a scrolling waveform), is a texture per path per
+    // frame that is never reused, churning the resource cache.
+    mMainPath.setIsVolatile(true);
     mCanvas->drawPath(mMainPath, paint);
   }
 }
@@ -1153,7 +1172,11 @@ ILayerPtr IGraphicsSkia::BlurLayer(const ILayerPtr& layer, float blurSize)
 
   tmpSurface->getCanvas()->clear(SK_ColorTRANSPARENT);
   tmpSurface->getCanvas()->drawImage(sourceImage, 0.f, 0.f, SkSamplingOptions(), &blurPaint);
-  mGrContext->flushAndSubmit();
+  // No flushAndSubmit() here: Ganesh orders work across surfaces in the same
+  // context, so the snapshot taken of tmpSurface below already sees the blur,
+  // and EndFrame() submits once. Submitting per call cost a Metal command-buffer
+  // submission per backdrop blur - with a dozen liquid-glass elements redrawing
+  // at 120 fps, most of the time they took.
 
   APIBitmap* pBmp = new Bitmap(std::move(tmpSurface), w, h,
                                layer->GetAPIBitmap()->GetScale(),

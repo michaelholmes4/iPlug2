@@ -122,7 +122,10 @@ typedef struct MNVGfragUniforms MNVGfragUniforms;
 
 @interface MNVGbuffers : NSObject
 
-@property (nonatomic, strong) id<MTLCommandBuffer> commandBuffer;
+// atomic: the completed handler clears this on a Metal thread while
+// mnvgImageHandle()/mnvgReadPixels() read it on the main thread. A nonatomic
+// getter can retain the buffer after the handler has released it.
+@property (atomic, strong) id<MTLCommandBuffer> commandBuffer;
 @property (nonatomic, assign) BOOL isBusy;
 @property (nonatomic, assign) int image;
 @property (nonatomic, strong) id<MTLBuffer> viewSizeBuffer;
@@ -563,8 +566,8 @@ void* mnvgImageHandle(NVGcontext* ctx, int image) {
 
   // Makes sure the command execution for the image has been done.
   for (MNVGbuffers* buffers in mtl.cbuffers) {
-    if (buffers.isBusy && buffers.image == image && buffers.commandBuffer) {
-      id<MTLCommandBuffer> commandBuffer = buffers.commandBuffer;
+    id<MTLCommandBuffer> commandBuffer = buffers.commandBuffer;
+    if (buffers.isBusy && buffers.image == image && commandBuffer) {
       [commandBuffer waitUntilCompleted];
       break;
     }
@@ -593,8 +596,8 @@ void mnvgReadPixels(NVGcontext* ctx, int image, int x, int y, int width,
   // different cbuffers slots — wait for all of them, not just the first
   // match, otherwise the read can race ahead of the most recent flush.
   for (MNVGbuffers* buffers in mtl.cbuffers) {
-    if (buffers.isBusy && buffers.image == image && buffers.commandBuffer) {
-      id<MTLCommandBuffer> commandBuffer = buffers.commandBuffer;
+    id<MTLCommandBuffer> commandBuffer = buffers.commandBuffer;
+    if (buffers.isBusy && buffers.image == image && commandBuffer) {
       [commandBuffer waitUntilCompleted];
     }
   }

@@ -635,9 +635,18 @@ void IGraphicsSkia::DrawBitmap(const IBitmap& bitmap, const IRECT& dest, int src
 #ifdef IGRAPHICS_CPU
   auto samplingOptions = SkSamplingOptions(SkFilterMode::kLinear, SkMipmapMode::kNone);
 #else
-  auto samplingOptions = SkSamplingOptions(SkCubicResampler::Mitchell());
+  // Mitchell cubic costs 16 texture reads per pixel, and only improves on
+  // bilinear when the bitmap is actually being resampled. Bitmaps drawn 1:1
+  // onto device pixels - cached layers above all, redrawn every frame under
+  // anything animating on top of them - use bilinear instead.
+  const SkMatrix deviceMatrix = mCanvas->getLocalToDeviceAs3x3();
+  const bool unscaled = deviceMatrix.isScaleTranslate()
+    && std::abs(deviceMatrix.getScaleX() - 1.f) < 1e-4f
+    && std::abs(deviceMatrix.getScaleY() - 1.f) < 1e-4f;
+  auto samplingOptions = unscaled ? SkSamplingOptions(SkFilterMode::kLinear, SkMipmapMode::kNone)
+                                  : SkSamplingOptions(SkCubicResampler::Mitchell());
 #endif
-    
+
   if (image->mIsSurface)
     image->mSurface->draw(mCanvas, 0.0, 0.0, samplingOptions, &p);
   else

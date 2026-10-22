@@ -1414,6 +1414,7 @@ uniform float uCoreWhite;
 uniform float uGlowRadius;
 uniform float uGlowIntensity;
 uniform float uHeatSwell;      // how much wider the halo grows at full heat
+uniform float uGlowSaturation; // the halo's saturation relative to uColor's
 uniform float uFlameHeight;
 uniform float uFlameIntensity;
 uniform float uTime;
@@ -1522,7 +1523,8 @@ half4 main(float2 p)
   // Light adds up: the brightest flames burn towards white. Alpha follows the brightest channel, so
   // over a dark backdrop the glow composites like light rather than like paint.
   float3 col = uColor.rgb;
-  float3 glow = col * (halo + flame) + float3(flame * flame * 0.6);
+  float3 glowCol = clamp(mix(float3(dot(col, float3(0.2126, 0.7152, 0.0722))), col, uGlowSaturation), 0.0, 1.0);
+  float3 glow = glowCol * (halo + flame) + float3(flame * flame * 0.6);
   float3 rgb = min(mix(glow, mix(col, float3(1.0), clamp(hot, 0.0, 1.0)), line), float3(1.0));
   float alpha = max(line, max(rgb.r, max(rgb.g, rgb.b)));
 
@@ -1630,6 +1632,7 @@ void IGraphicsSkia::DrawGlowCurve(const IRECT& bounds, const float* ys, const fl
   builder.uniform("uGlowRadius") = glowRadius;
   builder.uniform("uGlowIntensity") = std::max(glow.mGlowIntensity, 0.f);
   builder.uniform("uHeatSwell") = heatSwell;
+  builder.uniform("uGlowSaturation") = std::max(glow.mGlowSaturation, 0.f);
   builder.uniform("uFlameHeight") = flameHeight;
   builder.uniform("uFlameIntensity") = std::max(glow.mFlameIntensity, 0.f);
   builder.uniform("uTime") = glow.mTime;

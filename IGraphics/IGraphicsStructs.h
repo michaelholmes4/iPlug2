@@ -2492,6 +2492,8 @@ struct IGlowCurve
   float mGlowIntensity = 0.5f;
   /** How much wider the halo grows at full heat: 1 doubles mGlowRadius, 0 leaves it alone */
   float mHeatSwell = 0.f;
+  /** Saturation of the halo and flames relative to mColor's: 1 matches it, above 1 is richer */
+  float mGlowSaturation = 1.f;
   /** How far in points the flames rise above the line at full heat, 0 for none */
   float mFlameHeight = 20.f;
   /** Brightness of the flames at full heat (0-1) */

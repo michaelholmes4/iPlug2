@@ -1407,12 +1407,13 @@ uniform float uDx;             // distance between points
 uniform float uYOrigin;        // heights unpack to uYOrigin + v * uYSpan
 uniform float uYSpan;
 uniform float uSearch;         // points either side that can lie within uReach, at most kMaxSearch
-uniform float uReach;          // distance beyond which the halo has faded out
+uniform float uReach;          // distance beyond which the halo has faded out, at full heat
 uniform float4 uColor;         // unpremultiplied; its alpha fades everything
 uniform float uHalfThickness;
 uniform float uCoreWhite;
 uniform float uGlowRadius;
 uniform float uGlowIntensity;
+uniform float uHeatSwell;      // how much wider the halo grows at full heat
 uniform float uFlameHeight;
 uniform float uFlameIntensity;
 uniform float uTime;
@@ -1496,9 +1497,13 @@ half4 main(float2 p)
   float line = clamp(0.5 - edge / uPixel, 0.0, 1.0);
   float hot = uCoreWhite * exp(-(d * d) / max(uHalfThickness * uHalfThickness * 0.6, 1e-3));
 
-  // The halo, brighter and wavering where the curve is hot, gone by uReach
-  float waver = 1.0 + heat * (0.5 + 0.6 * (Noise(float2(p.x * 0.04, uTime * 2.5)) - 0.5));
-  float halo = uGlowIntensity * waver * exp(-max(edge, 0.0) / uGlowRadius) * (1.0 - smoothstep(uReach * 0.6, uReach, d));
+  // The halo: brighter and wider where the curve is hot, and wavering there too when it burns
+  float radius = uGlowRadius * (1.0 + uHeatSwell * heat);
+  float reach = uHalfThickness + 4.0 * radius;
+  float waver = 1.0 + heat * 0.5;
+  if (uFlameHeight > 0.0)
+    waver += heat * 0.6 * (Noise(float2(p.x * 0.04, uTime * 2.5)) - 0.5);
+  float halo = uGlowIntensity * waver * exp(-max(edge, 0.0) / radius) * (1.0 - smoothstep(reach * 0.6, reach, d));
 
   // Flames: noise rising over time and swaying sideways, thresholded by height above the line so
   // that only its brightest parts reach up, as separate tongues. Heat sets how high they climb
@@ -1551,7 +1556,8 @@ void IGraphicsSkia::DrawGlowCurve(const IRECT& bounds, const float* ys, const fl
   const float dx = bounds.W() / static_cast<float>(n - 1);
   const float halfThickness = std::max(glow.mThickness, 0.f) * 0.5f;
   const float glowRadius = std::max(glow.mGlowRadius, 0.01f);
-  const float reach = halfThickness + 4.f * glowRadius;
+  const float heatSwell = heat ? std::max(glow.mHeatSwell, 0.f) : 0.f;
+  const float reach = halfThickness + 4.f * glowRadius * (1.f + heatSwell);
   const int search = std::min(kMaxSearch, static_cast<int>(std::ceil(reach / dx)) + 1);
   const float flameHeight = heat ? std::max(glow.mFlameHeight, 0.f) : 0.f;
 
@@ -1623,6 +1629,7 @@ void IGraphicsSkia::DrawGlowCurve(const IRECT& bounds, const float* ys, const fl
   builder.uniform("uCoreWhite") = Clip(glow.mCoreWhite, 0.f, 1.f);
   builder.uniform("uGlowRadius") = glowRadius;
   builder.uniform("uGlowIntensity") = std::max(glow.mGlowIntensity, 0.f);
+  builder.uniform("uHeatSwell") = heatSwell;
   builder.uniform("uFlameHeight") = flameHeight;
   builder.uniform("uFlameIntensity") = std::max(glow.mFlameIntensity, 0.f);
   builder.uniform("uTime") = glow.mTime;

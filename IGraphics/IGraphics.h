@@ -590,13 +590,13 @@ public:
   virtual void DrawBackdropLiquidGlass(const IRECT& bounds, float cornerRadius, const ILiquidGlass& glass = ILiquidGlass(), const IBlend* pBlend = nullptr);
 
   /** Draws a curve that has one height per column (a frequency response, an envelope) as a glowing
-   * line: a white-hot core, a soft halo in its colour, and optional flames that flicker up from it
-   * wherever it is given heat. Skia's GPU backends render it with a runtime shader that finds each
+   * line: a white-hot core and a soft halo in its colour, which brightens and can swell or burn with
+   * flames wherever the curve is given heat. Skia's GPU backends render it with a runtime shader that finds each
    * pixel's exact distance to the curve; other backends draw a plain line of glow.mColor and
    * glow.mThickness. Halo and flames reach outside bounds vertically, never horizontally.
    * @param bounds The span the curve covers: ys[0] is at bounds.L and ys[n - 1] at bounds.R
    * @param ys n heights in graphics context coordinates, evenly spaced across bounds
-   * @param heat Optional n values (0-1): how strongly flames rise from each point, nullptr for none
+   * @param heat Optional n values (0-1): how hot each point is, nullptr for none
    * @param n The number of points, at least 2
    * @param glow The look of the curve
    * @param pBlend Optional blend method; its weight fades the whole curve */

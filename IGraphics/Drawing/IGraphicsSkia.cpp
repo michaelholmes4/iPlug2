@@ -1392,6 +1392,250 @@ void IGraphicsSkia::DrawBackdropLiquidGlass(const IRECT& bounds, float cornerRad
   mCanvas->drawRoundRect(SkiaRect(bounds), radius, radius, paint);
 }
 
+// The glowing curve. The curve has one height per column, so the nearest point of it to any pixel
+// lies within a few columns - no further than the curve's own height at that pixel's x is away -
+// and each pixel can afford to measure its exact distance to the polyline instead of the curve
+// being blurred. The data image is two rows of one texel per point: row 0 holds the height (16 bits
+// over r,g) and the heat (b); row 1 the lowest (r,g) and highest (b,a) heights within the search
+// window around the point, which lets most of the drawn rect return straight away. Values are
+// unpacked from 8-bit channels because a half can't hold a 16-bit height exactly.
+static const char* kGlowCurveSkSL = R"(
+uniform shader uData;
+uniform float uN;              // points
+uniform float uLeft;           // x of point 0
+uniform float uDx;             // distance between points
+uniform float uYOrigin;        // heights unpack to uYOrigin + v * uYSpan
+uniform float uYSpan;
+uniform float uSearch;         // points either side that can lie within uReach, at most kMaxSearch
+uniform float uReach;          // distance beyond which the halo has faded out
+uniform float4 uColor;         // unpremultiplied; its alpha fades everything
+uniform float uHalfThickness;
+uniform float uCoreWhite;
+uniform float uGlowRadius;
+uniform float uGlowIntensity;
+uniform float uFlameHeight;
+uniform float uFlameIntensity;
+uniform float uTime;
+uniform float uPixel;          // one device pixel, in points
+
+const int kMaxSearch = 48;
+
+float Unpack(half hi, half lo)
+{
+  return (floor(float(hi) * 255.0 + 0.5) * 256.0 + floor(float(lo) * 255.0 + 0.5)) / 65535.0;
+}
+
+half4 Texel(float i, float row)
+{
+  return uData.eval(float2(clamp(i, 0.0, uN - 1.0) + 0.5, row + 0.5));
+}
+
+float Height(float i)
+{
+  half4 t = Texel(i, 0.0);
+  return uYOrigin + Unpack(t.r, t.g) * uYSpan;
+}
+
+// Dave Hoskins' hash12, and value noise built on it
+float Hash(float2 p)
+{
+  float3 p3 = fract(float3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+float Noise(float2 p)
+{
+  float2 i = floor(p);
+  float2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(Hash(i), Hash(i + float2(1.0, 0.0)), f.x),
+             mix(Hash(i + float2(0.0, 1.0)), Hash(i + float2(1.0, 1.0)), f.x), f.y);
+}
+
+half4 main(float2 p)
+{
+  float fx = clamp((p.x - uLeft) / uDx, 0.0, uN - 1.0);
+  float c = floor(fx);
+  float flameReach = uFlameHeight * 1.5;
+
+  half4 w = Texel(c, 1.0);
+  float lo = uYOrigin + Unpack(w.r, w.g) * uYSpan;
+  float hi = uYOrigin + Unpack(w.b, w.a) * uYSpan;
+
+  if (p.y < lo - max(uReach, flameReach) || p.y > hi + uReach)
+    return half4(0.0);
+
+  half4 t0 = Texel(c, 0.0);
+  half4 t1 = Texel(c + 1.0, 0.0);
+  float f = fx - c;
+  float y = mix(uYOrigin + Unpack(t0.r, t0.g) * uYSpan, uYOrigin + Unpack(t1.r, t1.g) * uYSpan, f);
+  float heat = mix(float(t0.b), float(t1.b), f);
+
+  // Exact distance to the polyline. The curve passes straight above or below p, so nothing further
+  // away than that, sideways, can be nearer
+  float d = abs(p.y - y);
+  float s = min(uSearch, ceil(min(d, uReach) / uDx) + 1.0);
+  float2 a = float2(uLeft + (c - s) * uDx, Height(c - s));
+
+  for (int k = 0; k < 2 * kMaxSearch + 1; k++)
+  {
+    float i = c - s + 1.0 + float(k);
+    if (i > c + s + 1.0)
+      break;
+
+    float2 b = float2(uLeft + i * uDx, Height(i));
+    float2 ab = b - a;
+    float2 ap = p - a;
+    d = min(d, length(ap - ab * clamp(dot(ap, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0)));
+    a = b;
+  }
+
+  // The line, anti-aliased, white-hot along its middle
+  float edge = d - uHalfThickness;
+  float line = clamp(0.5 - edge / uPixel, 0.0, 1.0);
+  float hot = uCoreWhite * exp(-(d * d) / max(uHalfThickness * uHalfThickness * 0.6, 1e-3));
+
+  // The halo, brighter and wavering where the curve is hot, gone by uReach
+  float waver = 1.0 + heat * (0.5 + 0.6 * (Noise(float2(p.x * 0.04, uTime * 2.5)) - 0.5));
+  float halo = uGlowIntensity * waver * exp(-max(edge, 0.0) / uGlowRadius) * (1.0 - smoothstep(uReach * 0.6, uReach, d));
+
+  // Flames: noise rising over time and swaying sideways, thresholded by height above the line so
+  // that only its brightest parts reach up, as separate tongues. Heat sets how high they climb
+  float flame = 0.0;
+  float rise = y - uHalfThickness - p.y;
+
+  if (heat > 0.004 && uFlameHeight > 0.0 && rise > -uHalfThickness)
+  {
+    float u = max(rise, 0.0) / (uFlameHeight * heat);
+    float2 q = float2(p.x * 0.06 + 0.5 * sin(p.y * 0.05 + uTime * 1.1), (p.y + uTime * 30.0) * 0.035);
+    float n = smoothstep(0.15, 0.85, 0.6 * Noise(q) + 0.4 * Noise(q * 2.2 + 5.1));
+    float fire = clamp(n * 1.8 - u * 1.2 - 0.15, 0.0, 1.0);
+    flame = uFlameIntensity * sqrt(heat) * fire * (1.0 - smoothstep(1.0, 1.5, u));
+  }
+
+  // Light adds up: the brightest flames burn towards white. Alpha follows the brightest channel, so
+  // over a dark backdrop the glow composites like light rather than like paint.
+  float3 col = uColor.rgb;
+  float3 glow = col * (halo + flame) + float3(flame * flame * 0.6);
+  float3 rgb = min(mix(glow, mix(col, float3(1.0), clamp(hot, 0.0, 1.0)), line), float3(1.0));
+  float alpha = max(line, max(rgb.r, max(rgb.g, rgb.b)));
+
+  return half4(half3(rgb), half(alpha)) * half(uColor.a);
+}
+)";
+
+void IGraphicsSkia::DrawGlowCurve(const IRECT& bounds, const float* ys, const float* heat, int n, const IGlowCurve& glow, const IBlend* pBlend)
+{
+  static const sk_sp<SkRuntimeEffect> sEffect = [] {
+    auto [effect, error] = SkRuntimeEffect::MakeForShader(SkString(kGlowCurveSkSL));
+    if (!effect)
+      DBGMSG("Glow curve shader failed to compile: %s\n", error.c_str());
+    return effect;
+  }();
+
+#ifdef IGRAPHICS_CPU
+  const bool gpu = false;
+#else
+  const bool gpu = mGrContext != nullptr;
+#endif
+
+  // Per pixel, the shader is too slow for the CPU rasterizer
+  if (!sEffect || !gpu || !ys || n < 2 || bounds.W() <= 0.f)
+  {
+    IGraphics::DrawGlowCurve(bounds, ys, heat, n, glow, pBlend);
+    return;
+  }
+
+  constexpr int kMaxSearch = 48; // the shader's own
+  const float dx = bounds.W() / static_cast<float>(n - 1);
+  const float halfThickness = std::max(glow.mThickness, 0.f) * 0.5f;
+  const float glowRadius = std::max(glow.mGlowRadius, 0.01f);
+  const float reach = halfThickness + 4.f * glowRadius;
+  const int search = std::min(kMaxSearch, static_cast<int>(std::ceil(reach / dx)) + 1);
+  const float flameHeight = heat ? std::max(glow.mFlameHeight, 0.f) : 0.f;
+
+  float yMin = ys[0];
+  float yMax = ys[0];
+
+  for (int i = 1; i < n; i++)
+  {
+    yMin = std::min(yMin, ys[i]);
+    yMax = std::max(yMax, ys[i]);
+  }
+
+  const float ySpan = std::max(yMax - yMin, 1e-3f);
+
+  auto pack = [&](float y) {
+    return Clip(static_cast<int>(std::lround((y - yMin) / ySpan * 65535.f)), 0, 65535);
+  };
+
+  mGlowCurveData.Resize(n * 2 * 4, false);
+  uint8_t* pRow0 = mGlowCurveData.Get();
+  uint8_t* pRow1 = pRow0 + n * 4;
+
+  for (int i = 0; i < n; i++)
+  {
+    const int v = pack(ys[i]);
+    pRow0[i * 4 + 0] = static_cast<uint8_t>(v >> 8);
+    pRow0[i * 4 + 1] = static_cast<uint8_t>(v & 255);
+    pRow0[i * 4 + 2] = heat ? static_cast<uint8_t>(Clip(static_cast<int>(std::lround(heat[i] * 255.f)), 0, 255)) : 0;
+    pRow0[i * 4 + 3] = 255;
+
+    // The window the shader searches from point i: points i - search to i + search + 1
+    float lo = ys[i];
+    float hi = ys[i];
+
+    for (int j = std::max(0, i - search); j <= std::min(n - 1, i + search + 1); j++)
+    {
+      lo = std::min(lo, ys[j]);
+      hi = std::max(hi, ys[j]);
+    }
+
+    const int vLo = pack(lo);
+    const int vHi = pack(hi);
+    pRow1[i * 4 + 0] = static_cast<uint8_t>(vLo >> 8);
+    pRow1[i * 4 + 1] = static_cast<uint8_t>(vLo & 255);
+    pRow1[i * 4 + 2] = static_cast<uint8_t>(vHi >> 8);
+    pRow1[i * 4 + 3] = static_cast<uint8_t>(vHi & 255);
+  }
+
+  const SkImageInfo info = SkImageInfo::Make(n, 2, kRGBA_8888_SkColorType, kUnpremul_SkAlphaType);
+  sk_sp<SkImage> data = SkImages::RasterFromPixmapCopy(SkPixmap(info, mGlowCurveData.Get(), n * 4));
+
+  if (!data)
+    return;
+
+  const float weight = pBlend ? Clip(pBlend->mWeight, 0.f, 1.f) : 1.f;
+  const float color[4] = { glow.mColor.R / 255.f, glow.mColor.G / 255.f, glow.mColor.B / 255.f, glow.mColor.A / 255.f * weight };
+
+  SkRuntimeShaderBuilder builder(sEffect);
+  builder.child("uData") = data->makeRawShader(SkTileMode::kClamp, SkTileMode::kClamp, SkSamplingOptions(SkFilterMode::kNearest));
+  builder.uniform("uN") = static_cast<float>(n);
+  builder.uniform("uLeft") = bounds.L;
+  builder.uniform("uDx") = dx;
+  builder.uniform("uYOrigin") = yMin;
+  builder.uniform("uYSpan") = ySpan;
+  builder.uniform("uSearch") = static_cast<float>(search);
+  builder.uniform("uReach") = reach;
+  builder.uniform("uColor").set(color, 4);
+  builder.uniform("uHalfThickness") = halfThickness;
+  builder.uniform("uCoreWhite") = Clip(glow.mCoreWhite, 0.f, 1.f);
+  builder.uniform("uGlowRadius") = glowRadius;
+  builder.uniform("uGlowIntensity") = std::max(glow.mGlowIntensity, 0.f);
+  builder.uniform("uFlameHeight") = flameHeight;
+  builder.uniform("uFlameIntensity") = std::max(glow.mFlameIntensity, 0.f);
+  builder.uniform("uTime") = glow.mTime;
+  builder.uniform("uPixel") = 1.f / GetBackingPixelScale();
+
+  SkPaint paint;
+  paint.setShader(builder.makeShader());
+  paint.setBlendMode(SkiaBlendMode(pBlend));
+
+  const IRECT r(bounds.L, yMin - std::max(reach, flameHeight * 1.5f), bounds.R, yMax + reach);
+  mCanvas->drawRect(SkiaRect(r), paint);
+}
+
 void IGraphicsSkia::DrawMultiLineText(const IText& text, const char* str, const IRECT& bounds, const IBlend* pBlend)
 {
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH

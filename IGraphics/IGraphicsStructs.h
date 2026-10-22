@@ -2475,6 +2475,28 @@ struct ILiquidGlass
   float mBrightness = 0.f;
 };
 
+/** The look of a curve drawn with IGraphics::DrawGlowCurve(): a line with a white-hot core and a soft
+ * halo in its colour, and flames that flicker up from it wherever the caller gives it heat. */
+struct IGlowCurve
+{
+  /** The line's colour; the halo and flames take its hue. Its alpha fades the whole curve */
+  IColor mColor = COLOR_WHITE;
+  /** Thickness of the line in points */
+  float mThickness = 2.f;
+  /** How far the centre of the line is mixed from mColor towards white (0-1) */
+  float mCoreWhite = 0.5f;
+  /** Distance in points over which the halo fades to about a third */
+  float mGlowRadius = 5.f;
+  /** Brightness of the halo where it meets the line (0-1) */
+  float mGlowIntensity = 0.5f;
+  /** How far in points the flames rise above the line at full heat, 0 for none */
+  float mFlameHeight = 20.f;
+  /** Brightness of the flames at full heat (0-1) */
+  float mFlameIntensity = 0.5f;
+  /** Time in seconds: advance it from frame to frame to make the flames flicker and rise */
+  float mTime = 0.f;
+};
+
 /** Contains a set of 9 colors used to theme IVControls */
 struct IVColorSpec
 {

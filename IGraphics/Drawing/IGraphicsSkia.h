@@ -115,7 +115,8 @@ public:
 
   ILayerPtr BlurLayer(const ILayerPtr& layer, float blurSize) override;
   void DrawBackdropLiquidGlass(const IRECT& bounds, float cornerRadius, const ILiquidGlass& glass, const IBlend* pBlend) override;
-  
+  void DrawGlowCurve(const IRECT& bounds, const float* ys, const float* heat, int n, const IGlowCurve& glow, const IBlend* pBlend) override;
+
   IColor GetPoint(int x, int y) override;
   void* GetDrawContext() override { return (void*) mCanvas; }
 
@@ -157,6 +158,7 @@ private:
   SkMatrix mMatrix;
   SkMatrix mClipMatrix;
   SkMatrix mFinalMatrix;
+  WDL_TypedBuf<uint8_t> mGlowCurveData; // DrawGlowCurve's data image, reused from frame to frame
 
 #if defined OS_WIN && defined IGRAPHICS_CPU
   WDL_TypedBuf<uint8_t> mSurfaceMemory;

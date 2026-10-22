@@ -2296,6 +2296,23 @@ void IGraphics::DrawBackdropLiquidGlass(const IRECT& bounds, float cornerRadius,
   }
 }
 
+void IGraphics::DrawGlowCurve(const IRECT& bounds, const float* ys, const float* heat, int n, const IGlowCurve& glow, const IBlend* pBlend)
+{
+  // Fallback for backends without a runtime shader: the line alone, no glow or flames.
+  if (!ys || n < 2)
+    return;
+
+  const float dx = bounds.W() / static_cast<float>(n - 1);
+
+  PathClear();
+  PathMoveTo(bounds.L, ys[0]);
+
+  for (int i = 1; i < n; i++)
+    PathLineTo(bounds.L + i * dx, ys[i]);
+
+  PathStroke(glow.mColor, glow.mThickness, IStrokeOptions(), pBlend);
+}
+
 ILayerPtr IGraphics::BlurLayer(const ILayerPtr& layer, float blurSize)
 {
   // Fallback: progressive downsampling via bilinear minification.

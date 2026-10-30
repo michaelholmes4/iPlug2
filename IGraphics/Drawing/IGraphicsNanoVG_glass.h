@@ -42,10 +42,11 @@ enum ELiquidGlassParam
   kLGSaturation,
   kLGBrightness,
   kLGTintR, kLGTintG, kLGTintB, kLGTintA, // premultiplied
+  kLGEdgeFrost,
   kNumLGParams
 };
 
-static_assert(kNumLGParams == 23, "Update the parameter unpacking at the top of kLiquidGlassBody to match");
+static_assert(kNumLGParams == 24, "Update the parameter unpacking at the top of kLiquidGlassBody to match");
 
 static const char kLiquidGlassFunctions[] = R"(
 float sdRoundBox(float2 p, float2 b, float r)
@@ -80,6 +81,7 @@ static const char kLiquidGlassBody[] = R"(
   float saturation = P(17);
   float brightness = P(18);
   float4 tint = float4(P(19), P(20), P(21), P(22));
+  float edgeFrost = P(23);
 
   float2 coord = origin + PIX / scale;
   float2 p = coord - center;
@@ -95,14 +97,42 @@ static const char kLiquidGlassBody[] = R"(
   float theta2 = asin(sin(theta1) / 1.5);
   float2 offset = -n * (refraction * depth * tan(theta1 - theta2));
 
-  float4 col = SAMPLE(coord + offset);
+  // Blue bends more than red
+  float k = dispersion * 0.3;
 
-  if (dispersion > 0.0)
+  // Edge frost: a blur growing from nothing where the bezel meets the flat top to edgeFrost points at the rim,
+  // averaged from taps on a Vogel spiral, which fill the disc evenly
+  float blur = edgeFrost * u;
+  float4 col;
+
+  if (blur > 0.05)
   {
-    // Blue bends more than red
-    float k = dispersion * 0.3;
-    col.r = SAMPLE(coord + offset * (1.0 - k)).r;
-    col.b = SAMPLE(coord + offset * (1.0 + k)).b;
+    col = float4(0.0);
+    for (int i = 0; i < 16; i++)
+    {
+      float a = float(i) * 2.39996;
+      float2 tap = blur * sqrt((float(i) + 0.5) / 16.0) * float2(cos(a), sin(a));
+      float4 s = SAMPLE(coord + offset + tap);
+
+      if (dispersion > 0.0)
+      {
+        s.r = SAMPLE(coord + offset * (1.0 - k) + tap).r;
+        s.b = SAMPLE(coord + offset * (1.0 + k) + tap).b;
+      }
+
+      col += s;
+    }
+    col /= 16.0;
+  }
+  else
+  {
+    col = SAMPLE(coord + offset);
+
+    if (dispersion > 0.0)
+    {
+      col.r = SAMPLE(coord + offset * (1.0 - k)).r;
+      col.b = SAMPLE(coord + offset * (1.0 + k)).b;
+    }
   }
 
   // Vibrancy: glass makes what's behind it more saturated and a touch brighter

@@ -257,6 +257,9 @@ SkPaint SkiaPaint(const IPattern& pattern, const IBlend* pBlend)
       positions[i] = stop.mOffset;
     }
 
+    // Skia only dithers when the paint asks; without it gradients band on 8-bit surfaces
+    paint.setDither(true);
+
     switch (pattern.mType)
     {
     case EPatternType::Linear:

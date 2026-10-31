@@ -490,6 +490,12 @@ void IGraphicsSkia::DrawResize()
     if (!mSurface)
 #endif
     mSurface = SkSurfaces::RenderTarget(mGrContext.get(), skgpu::Budgeted::kYes, info);
+
+    // The surface and layers from the old size go back to Ganesh's resource
+    // cache as scratch, where nothing at the new size can reuse them; left
+    // there they hold up to the cache budget (~256 MB) after a drag-resize
+    // until the context is destroyed.
+    mGrContext->purgeUnlockedResources(GrPurgeResourceOptions::kScratchResourcesOnly);
   }
 #else
   #ifdef OS_WIN
@@ -600,6 +606,11 @@ void IGraphicsSkia::EndFrame()
 
   if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext())) {
     dContext->flushAndSubmit();
+    // Ganesh keeps scratch surfaces and upload buffers for reuse up to its
+    // cache budget, so one-off work (the first frame's image uploads,
+    // single-use layers) stays resident for the life of the context. Return
+    // scratch nothing has touched for a while; images keep their textures.
+    dContext->performDeferredCleanup(std::chrono::seconds(5), GrPurgeResourceOptions::kScratchResourcesOnly);
   }
 
   #ifdef IGRAPHICS_METAL

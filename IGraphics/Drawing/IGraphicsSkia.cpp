@@ -1247,6 +1247,7 @@ uniform float uNormalRadius;
 uniform float uDepth;
 uniform float uRefraction;
 uniform float uDispersion;
+uniform float uEdgeFrost;
 uniform float2 uLightDir;
 uniform float uLightIntensity;
 uniform float4 uTint; // premultiplied
@@ -1283,14 +1284,42 @@ half4 main(float2 coord)
   float theta2 = asin(sin(theta1) / 1.5);
   float2 offset = -n * (uRefraction * uDepth * tan(theta1 - theta2));
 
-  half4 col = image.eval(coord + offset);
+  // Blue bends more than red
+  float k = uDispersion * 0.3;
 
-  if (uDispersion > 0.0)
+  // Edge frost: a blur growing from nothing where the bezel meets the flat top to uEdgeFrost points at the rim,
+  // averaged from taps on a Vogel spiral, which fill the disc evenly
+  float blur = uEdgeFrost * u;
+  half4 col;
+
+  if (blur > 0.05)
   {
-    // Blue bends more than red
-    float k = uDispersion * 0.3;
-    col.r = image.eval(coord + offset * (1.0 - k)).r;
-    col.b = image.eval(coord + offset * (1.0 + k)).b;
+    col = half4(0.0);
+    for (int i = 0; i < 16; i++)
+    {
+      float a = float(i) * 2.39996;
+      float2 tap = blur * sqrt((float(i) + 0.5) / 16.0) * float2(cos(a), sin(a));
+      half4 s = image.eval(coord + offset + tap);
+
+      if (uDispersion > 0.0)
+      {
+        s.r = image.eval(coord + offset * (1.0 - k) + tap).r;
+        s.b = image.eval(coord + offset * (1.0 + k) + tap).b;
+      }
+
+      col += s;
+    }
+    col /= 16.0;
+  }
+  else
+  {
+    col = image.eval(coord + offset);
+
+    if (uDispersion > 0.0)
+    {
+      col.r = image.eval(coord + offset * (1.0 - k)).r;
+      col.b = image.eval(coord + offset * (1.0 + k)).b;
+    }
   }
 
   // Vibrancy: glass makes what's behind it more saturated and a touch brighter
@@ -1337,8 +1366,9 @@ void IGraphicsSkia::DrawBackdropLiquidGlass(const IRECT& bounds, float cornerRad
   const float radius = Clip(cornerRadius, 0.f, maxRadius);
   const float depth = Clip(glass.mDepth, 0.5f, maxRadius);
 
-  // Refraction only samples inward, so the capture just needs padding for the frost blur's context
-  const IRECT r = bounds.GetPadded(std::max(0.f, glass.mFrost)).Intersect(GetBounds()).GetPixelAligned(scale);
+  // Refraction only samples inward, so the capture just needs padding for the frost blurs' context
+  const float pad = std::max({0.f, glass.mFrost, glass.mEdgeFrost});
+  const IRECT r = bounds.GetPadded(pad).Intersect(GetBounds()).GetPixelAligned(scale);
 
   ILayerPtr layer(new ILayer(SnapshotCanvas(r), r, nullptr, IRECT()));
 
@@ -1376,6 +1406,7 @@ void IGraphicsSkia::DrawBackdropLiquidGlass(const IRECT& bounds, float cornerRad
   builder.uniform("uDepth") = depth;
   builder.uniform("uRefraction") = Clip(glass.mRefraction, 0.f, 2.f);
   builder.uniform("uDispersion") = Clip(glass.mDispersion, 0.f, 1.f);
+  builder.uniform("uEdgeFrost") = std::max(0.f, glass.mEdgeFrost);
   builder.uniform("uLightDir").set(lightDir, 2);
   builder.uniform("uLightIntensity") = Clip(glass.mLightIntensity, 0.f, 1.f);
   builder.uniform("uTint").set(tint, 4);

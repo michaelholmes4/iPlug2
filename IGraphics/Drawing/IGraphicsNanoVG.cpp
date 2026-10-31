@@ -1303,8 +1303,9 @@ void IGraphicsNanoVG::DrawBackdropLiquidGlass(const IRECT& bounds, float cornerR
   const float radius = Clip(cornerRadius, 0.f, maxRadius);
   const float depth = Clip(glass.mDepth, 0.5f, maxRadius);
 
-  // Refraction only samples inward, so the capture just needs padding for the frost blur's context
-  const IRECT r = bounds.GetPadded(std::max(0.f, glass.mFrost)).Intersect(GetBounds()).GetPixelAligned(scale);
+  // Refraction only samples inward, so the capture just needs padding for the frost blurs' context
+  const float pad = std::max({0.f, glass.mFrost, glass.mEdgeFrost});
+  const IRECT r = bounds.GetPadded(pad).Intersect(GetBounds()).GetPixelAligned(scale);
 
   ILayerPtr layer(new ILayer(SnapshotCanvas(r), r, nullptr, IRECT()));
 
@@ -1342,6 +1343,7 @@ void IGraphicsNanoVG::DrawBackdropLiquidGlass(const IRECT& bounds, float cornerR
   params[kLGTintG] = glass.mTint.G / 255.f * tintA;
   params[kLGTintB] = glass.mTint.B / 255.f * tintA;
   params[kLGTintA] = tintA;
+  params[kLGEdgeFrost] = std::max(0.f, glass.mEdgeFrost);
 
   ILayerPtr lens = _LiquidGlassLayer(layer, params);
 

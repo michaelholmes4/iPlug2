@@ -2473,6 +2473,10 @@ struct ILiquidGlass
   float mSaturation = 1.4f;
   /** Brightness added to the backdrop seen through the glass (-1 to 1) */
   float mBrightness = 0.f;
+  /** Blur radius in points at the rim, on top of mFrost, fading to none where the bezel meets the flat top. Softens
+   * the squeezed copy of the backdrop the bezel shows, so clear glass (mFrost 0) can keep a sharp centre without
+   * hard-edged slivers round its edge */
+  float mEdgeFrost = 0.f;
 };
 
 /** Contains a set of 9 colors used to theme IVControls */

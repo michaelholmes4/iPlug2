@@ -606,6 +606,11 @@ void IGraphicsSkia::EndFrame()
 
   if (auto dContext = GrAsDirectContext(mScreenSurface->getCanvas()->recordingContext())) {
     dContext->flushAndSubmit();
+    // Ganesh keeps scratch surfaces and upload buffers for reuse up to its
+    // cache budget, so one-off work (the first frame's image uploads,
+    // single-use layers) stays resident for the life of the context. Return
+    // scratch nothing has touched for a while; images keep their textures.
+    dContext->performDeferredCleanup(std::chrono::seconds(5), GrPurgeResourceOptions::kScratchResourcesOnly);
   }
 
   #ifdef IGRAPHICS_METAL

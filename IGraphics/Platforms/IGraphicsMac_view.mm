@@ -902,6 +902,38 @@ static void displaySourcePerform(void* info)
 
   if (!mGraphics || ![self window]) return;
 
+  // A menu a synthesised press asked for opens once the button comes up (see
+  // deferMenuForSynthPress). Checked ahead of the stand-down below, which the
+  // pending request would otherwise hold us in for good.
+  if (mDeferredMenu)
+  {
+    if ([NSEvent pressedMouseButtons] & 1) return;
+
+    IPopupMenu* pMenu = mDeferredMenu;
+    mDeferredMenu = nullptr;
+    // The request released the capture, so there is no control to send the
+    // matching mouse-up to.
+    mSynthMouseDown = false;
+    mPrevPollButtonDown = false;
+
+    // Cleared if the controls were rebuilt while the button was held, in which
+    // case the control that owns pMenu may be gone.
+    if (!mGraphics->IsPopupMenuPending())
+    {
+      TREEDSP_MENU_LOG("deferred menu dropped, request cleared");
+      return;
+    }
+
+    TREEDSP_MENU_LOG("deferred menu opening on release");
+    IPopupMenu* pReturnMenu = [self createPopupMenu:*pMenu :mDeferredMenuRect];
+
+    if (pReturnMenu && pReturnMenu->GetFunction())
+      pReturnMenu->ExecFunction();
+
+    mGraphics->SetControlValueAfterPopupMenu(pReturnMenu);
+    return;
+  }
+
   // A platform menu or text entry owns the mouse while it is up; synthesising
   // underneath it re-enters the control that opened it. IsPopupMenuPending()
   // covers the request window too: on the asynchronous path mInPlatformMenu is
@@ -925,19 +957,24 @@ static void displaySourcePerform(void* info)
   // or we would react to clicks meant for it.
   bool blocked = false;
 
+  const bool buttonDown = ([NSEvent pressedMouseButtons] & 1) != 0;
+  const bool pressEdge = buttonDown && !mPrevPollButtonDown;
+
   if (inside)
   {
     // Both queries below are synchronous WindowServer round trips, so the answer
     // is cached rather than asked 60x a second. Which window is on top and how
     // big the host's frame window is do not change from frame to frame; a
     // quarter of a second is far below the threshold where a stale answer is
-    // noticeable, and the recovery it gates only ever starts on a button
-    // transition anyway.
+    // noticeable for hover. A press is asked afresh, though: the press is only
+    // seen on the one frame the button goes down, and an answer cached while
+    // the pointer was over a live part of the view, moments before it moved
+    // into the dead one and clicked, would drop the click altogether.
     static constexpr double kBlockedCacheSeconds = 0.25;
 
     const double now = GetTimestamp();
 
-    if ((now - mBlockedQueryTime) >= kBlockedCacheSeconds)
+    if (pressEdge || (now - mBlockedQueryTime) >= kBlockedCacheSeconds)
     {
       mBlockedQueryTime = now;
       mBlockedCached = false;
@@ -981,7 +1018,8 @@ static void displaySourcePerform(void* info)
     blocked = mBlockedCached;
   }
 
-  const bool buttonDown = ([NSEvent pressedMouseButtons] & 1) != 0;
+  if (pressEdge)
+    TREEDSP_MENU_LOG("poll press at %.0f,%.0f inside %d blocked %d", x, y, inside, blocked);
 
   // Release anything we synthesised as soon as the button goes up or the
   // pointer leaves, even if that happens outside the blocked region.
@@ -1007,7 +1045,7 @@ static void displaySourcePerform(void* info)
                (mods & NSControlKeyMask), (mods & NSAlternateKeyMask));
 
   // Press: only on a transition, so holding the button does not repeat.
-  if (buttonDown && !mPrevPollButtonDown && !mSynthMouseDown)
+  if (pressEdge && !mSynthMouseDown)
   {
     mSynthMouseDown = true;
     mSynthPrevX = x;
@@ -1018,7 +1056,9 @@ static void displaySourcePerform(void* info)
     info.y = y;
     info.ms = ms;
     std::vector<IMouseInfo> list {info};
+    mInSynthPress = true;
     mGraphics->OnMouseDown(list);
+    mInSynthPress = false;
   }
   else if (mSynthMouseDown)
   {
@@ -1046,6 +1086,24 @@ static void displaySourcePerform(void* info)
 
   mPrevPollButtonDown = buttonDown;
 #endif // AU_API || AUv3_API
+}
+
+// A press pollBlockedMouse synthesises reaches the control while the button is
+// still held, outside any real event, and a control that opens a menu on press
+// would open it right there. AppKit then tracks that menu as press-drag-release
+// against whatever stale event it last saw, and the release, a moment later,
+// closes it again: the menu flashes open and shut. Held back here instead, and
+// opened by the poll once the button is up, which is what a click that opens a
+// menu on release looks like and keeps it open. Returns NO for any other request.
+- (BOOL) deferMenuForSynthPress: (IPopupMenu&) menu : (NSRect) bounds
+{
+  if (!mInSynthPress)
+    return NO;
+
+  TREEDSP_MENU_LOG("menu deferred until release");
+  mDeferredMenu = &menu;
+  mDeferredMenuRect = bounds;
+  return YES;
 }
 
 - (void) render
@@ -1163,6 +1221,7 @@ static void displaySourcePerform(void* info)
 - (void) mouseDown: (NSEvent*) pEvent
 {
   IMouseInfo info = [self getMouseLeft:pEvent];
+  TREEDSP_MENU_LOG("real mouseDown at %.0f,%.0f", info.x, info.y);
   if (mGraphics)
   {
     if (([pEvent clickCount] - 1) % 2)

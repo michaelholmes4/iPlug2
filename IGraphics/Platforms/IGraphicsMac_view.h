@@ -162,6 +162,11 @@ using namespace igraphics;
   // WindowServer round trips behind it do not happen once per frame.
   bool mBlockedCached;
   double mBlockedQueryTime;
+  // A menu asked for by a synthesised press, held back until the button is
+  // released - see deferMenuForSynthPress.
+  bool mInSynthPress;
+  IPopupMenu* mDeferredMenu;
+  NSRect mDeferredMenuRect;
 
 #if defined IGRAPHICS_GLES2 || defined IGRAPHICS_GLES3
   EGLDisplay mEGLDisplay;
@@ -181,6 +186,7 @@ using namespace igraphics;
 - (void) drawRect: (NSRect) bounds;
 - (void) render;
 - (void) pollBlockedMouse;
+- (BOOL) deferMenuForSynthPress: (IPopupMenu&) menu : (NSRect) bounds;
 - (void) killTimer;
 #ifdef IGRAPHICS_CVDISPLAYLINK
 - (BOOL) setupDisplayLink;

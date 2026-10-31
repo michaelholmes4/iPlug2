@@ -632,6 +632,14 @@ IPopupMenu* IGraphicsMac::CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT 
   // is called from IGraphics::IsDirty(), immediately before Draw() binds the drawing context.
   // Everywhere else - which is to say the mouse and key handlers - it is safe to open the menu
   // inline, and that is also what AppKit itself does for a pop-up button.
+  // A press synthesised over the AU dead zone opens its menu on release instead; the view opens it
+  // and calls SetControlValueAfterPopupMenu() then (see deferMenuForSynthPress).
+  if (mView && [(IGRAPHICS_VIEW*) mView deferMenuForSynthPress:menu :ToNSRect(this, bounds)])
+  {
+    isAsync = true;
+    return nullptr;
+  }
+
   if ([NSThread isMainThread] && !InRenderTick())
   {
     isAsync = false;

@@ -427,6 +427,14 @@ public:
    * @return \c true if the control is marked dirty. */
   virtual bool IsDirty();
 
+  /** For a control that draws DrawBackdropBlur() or DrawBackdropLiquidGlass(): the area whose pixels that reads.
+   * When only part of the window redraws, the pixels around the redrawn part are last frame's finished picture,
+   * the effect included, so a backdrop drawn then frosts over itself and stops matching the rest. Whenever a
+   * redraw reaches this area, IGraphics redraws the whole control as well. Empty (the default) for controls
+   * that read no backdrop.
+   * @return The area the backdrop is captured from, padded for its blur */
+  virtual IRECT GetBackdropRECT() const { return IRECT(); }
+
   /** Disable/enable default prompt for user input
    * @param disable Set true to disable prompt */
   void DisablePrompt(bool disable) { mDisablePrompt = disable; }

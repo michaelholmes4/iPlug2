@@ -876,6 +876,40 @@ bool IGraphics::IsDirty(IRECTList& rects)
     
   ForAllControlsFunc(func);
 
+  // A control that reads its backdrop redraws whole whenever a redraw reaches what it reads (see
+  // IControl::GetBackdropRECT). Repeated, since one that is added can reach another's backdrop.
+  for (bool added = dirty; added;)
+  {
+    added = false;
+
+    ForAllControlsFunc([&added, &rects](IControl* pControl) {
+      if (pControl->IsHidden())
+        return;
+
+      const IRECT backdrop = pControl->GetBackdropRECT();
+
+      if (backdrop.Empty())
+        return;
+
+      const IRECT whole = pControl->GetRECT().GetPadded(0.75);
+      bool reached = false;
+
+      for (int i = 0; i < rects.Size(); i++)
+      {
+        if (rects.Get(i).Contains(whole))
+          return;
+
+        reached = reached || rects.Get(i).Intersects(backdrop);
+      }
+
+      if (reached)
+      {
+        rects.Add(whole);
+        added = true;
+      }
+    });
+  }
+
 #ifdef USE_IDLE_CALLS
   if (dirty)
   {

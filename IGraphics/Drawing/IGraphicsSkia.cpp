@@ -732,7 +732,112 @@ bool IGraphicsSkia::LoadAPIFont(const char* fontID, const PlatformFontPtr& font)
   return false;
 }
 
-void IGraphicsSkia::PrepareAndMeasureText(const IText& text, const char* str, IRECT& r, double& x, double & y, SkFont& font) const
+// Decodes the UTF-8 character at *pStr and advances past it. An invalid byte is skipped on its own and gives -1
+static SkUnichar NextUTF8Char(const char** pStr, const char* end)
+{
+  const unsigned char* p = reinterpret_cast<const unsigned char*>(*pStr);
+  const unsigned char lead = *p;
+  int length = lead < 0x80 ? 1 : (lead >> 5) == 0x6 ? 2 : (lead >> 4) == 0xE ? 3 : (lead >> 3) == 0x1E ? 4 : 0;
+
+  if (length == 0 || *pStr + length > end)
+  {
+    *pStr += 1;
+    return -1;
+  }
+
+  SkUnichar c = length == 1 ? lead : lead & (0x7F >> length);
+
+  for (int i = 1; i < length; i++)
+  {
+    if ((p[i] & 0xC0) != 0x80)
+    {
+      *pStr += 1;
+      return -1;
+    }
+
+    c = (c << 6) | (p[i] & 0x3F);
+  }
+
+  *pStr += length;
+  return c;
+}
+
+void IGraphicsSkia::SetTextLanguage(const char* bcp47)
+{
+  mTextLanguage.Set(bcp47 ? bcp47 : "");
+  mFallbackTypefaces.clear();
+  mCharsWithoutFallback.clear();
+}
+
+sk_sp<SkTypeface> IGraphicsSkia::GetFallbackTypeface(const SkFont& font, SkUnichar c) const
+{
+  const SkFontStyle style = font.getTypeface() ? font.getTypeface()->fontStyle() : SkFontStyle();
+
+  for (const auto& typeface : mFallbackTypefaces)
+  {
+    if (typeface->fontStyle() == style && typeface->unicharToGlyph(c))
+      return typeface;
+  }
+
+  if (mCharsWithoutFallback.count(c))
+    return nullptr;
+
+  const char* languages[] = { mTextLanguage.Get() };
+  const int numLanguages = mTextLanguage.GetLength() ? 1 : 0;
+  sk_sp<SkTypeface> typeface = SkFontMgrRefDefault()->matchFamilyStyleCharacter(nullptr, style, languages, numLanguages, c);
+
+  if (typeface && typeface->unicharToGlyph(c))
+    mFallbackTypefaces.push_back(typeface);
+  else
+  {
+    mCharsWithoutFallback.insert(c);
+    typeface = nullptr;
+  }
+
+  return typeface;
+}
+
+bool IGraphicsSkia::GetFontRuns(const SkFont& font, const char* str, std::vector<FontRun>& runs) const
+{
+  runs.clear();
+
+  const char* end = str + strlen(str);
+  const char* p = str;
+
+  // Plain ASCII is assumed to be covered by every UI font
+  while (p < end && static_cast<unsigned char>(*p) < 0x80)
+    p++;
+
+  if (p == end)
+    return false;
+
+  bool usesFallback = false;
+  p = str;
+
+  while (p < end)
+  {
+    const size_t start = p - str;
+    const SkUnichar c = NextUTF8Char(&p, end);
+    sk_sp<SkTypeface> fallback;
+
+    if (c > 0 && !font.unicharToGlyph(c))
+      fallback = GetFallbackTypeface(font, c);
+
+    usesFallback |= fallback != nullptr;
+
+    if (!runs.empty() && runs.back().fallback == fallback)
+      runs.back().length = (p - str) - runs.back().start;
+    else
+      runs.push_back({start, static_cast<size_t>(p - str) - start, std::move(fallback)});
+  }
+
+  if (!usesFallback)
+    runs.clear();
+
+  return usesFallback;
+}
+
+void IGraphicsSkia::PrepareAndMeasureText(const IText& text, const char* str, IRECT& r, double& x, double & y, SkFont& font, std::vector<FontRun>* pRuns) const
 {
   SkFontMetrics metrics;
   SkPaint paint;
@@ -778,7 +883,27 @@ void IGraphicsSkia::PrepareAndMeasureText(const IText& text, const char* str, IR
   font.setSubpixel(true);
   
   // Draw / measure
-  const double textWidth = font.measureText(str, strlen(str), SkTextEncoding::kUTF8, nullptr/* &bounds*/);
+  std::vector<FontRun> runs;
+  double textWidth = 0.0;
+
+  if (GetFontRuns(font, str, runs))
+  {
+    for (const auto& run : runs)
+    {
+      SkFont runFont = font;
+
+      if (run.fallback)
+        runFont.setTypeface(run.fallback);
+
+      textWidth += runFont.measureText(str + run.start, run.length, SkTextEncoding::kUTF8, nullptr);
+    }
+  }
+  else
+    textWidth = font.measureText(str, strlen(str), SkTextEncoding::kUTF8, nullptr/* &bounds*/);
+
+  if (pRuns)
+    *pRuns = std::move(runs);
+
   font.getMetrics(&metrics);
   
   const double textHeight = text.mSize;
@@ -822,13 +947,30 @@ void IGraphicsSkia::DoDrawText(const IText& text, const char* str, const IRECT& 
   font.setEdging(SkFont::Edging::kSubpixelAntiAlias);
 
   double x, y;
+  std::vector<FontRun> runs;
 
-  PrepareAndMeasureText(text, str, measured, x, y, font);
+  PrepareAndMeasureText(text, str, measured, x, y, font, &runs);
   PathTransformSave();
   DoTextRotation(text, bounds, measured);
   SkPaint paint;
   paint.setColor(SkiaColor(text.mFGColor, pBlend));
-  mCanvas->drawSimpleText(str, strlen(str), SkTextEncoding::kUTF8, x, y, font, paint);
+
+  if (runs.empty())
+    mCanvas->drawSimpleText(str, strlen(str), SkTextEncoding::kUTF8, x, y, font, paint);
+  else
+  {
+    for (const auto& run : runs)
+    {
+      SkFont runFont = font;
+
+      if (run.fallback)
+        runFont.setTypeface(run.fallback);
+
+      mCanvas->drawSimpleText(str + run.start, run.length, SkTextEncoding::kUTF8, x, y, runFont, paint);
+      x += runFont.measureText(str + run.start, run.length, SkTextEncoding::kUTF8, nullptr);
+    }
+  }
+
   PathTransformRestore();
 }
 
@@ -1472,6 +1614,9 @@ void IGraphicsSkia::DrawMultiLineText(const IText& text, const char* str, const 
   
   textStyle.setFontFamilies({SkString(fontFamily)});
   textStyle.setFontSize(text.mSize * 0.9);
+
+  if (mTextLanguage.GetLength())
+    textStyle.setLocale(SkString(mTextLanguage.Get()));
   textStyle.setFontStyle(SkFontStyle(SkFontStyle::kNormal_Weight,
                                      SkFontStyle::kNormal_Width,
                                      SkFontStyle::kUpright_Slant));

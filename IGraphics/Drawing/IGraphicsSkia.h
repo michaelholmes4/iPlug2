@@ -1,5 +1,8 @@
 #pragma once
 
+#include <unordered_set>
+#include <vector>
+
 #include "IPlugPlatform.h"
 #include "IGraphics.h"
 
@@ -18,6 +21,8 @@
 #include "include/core/SkPath.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkImage.h"
+#include "include/core/SkFont.h"
+#include "include/core/SkTypeface.h"
 #include "include/gpu/GrDirectContext.h"
 #pragma warning( pop )
 
@@ -134,6 +139,8 @@ public:
   
   void DrawMultiLineText(const IText& text, const char* str, const IRECT& bounds, const IBlend* pBlend) override;
 
+  void SetTextLanguage(const char* bcp47) override;
+
 protected:
     
   float DoMeasureText(const IText& text, const char* str, IRECT& bounds) const override;
@@ -144,7 +151,30 @@ protected:
   APIBitmap* LoadAPIBitmap(const char* fileNameOrResID, int scale, EResourceLocation location, const char* ext) override;
   APIBitmap* LoadAPIBitmap(const char* name, const void* pData, int dataSize, int scale) override;
 private:  
-  void PrepareAndMeasureText(const IText& text, const char* str, IRECT& r, double& x, double & y, SkFont& font) const;
+  /** A stretch of a string drawn in one typeface: the IText's font, or a fallback for characters that font lacks */
+  struct FontRun
+  {
+    size_t start;
+    size_t length;
+    sk_sp<SkTypeface> fallback; // nullptr: the IText's own font
+  };
+
+  /** Measures str and positions it in r. If pRuns is given it receives str's FontRuns (empty when the whole string
+   * is drawn in the IText's font) */
+  void PrepareAndMeasureText(const IText& text, const char* str, IRECT& r, double& x, double & y, SkFont& font, std::vector<FontRun>* pRuns = nullptr) const;
+
+  /** Splits str into FontRuns, so a character missing from font (CJK in a Latin UI font, say) is drawn from a system
+   * font that has it rather than as an empty box. Returns false, leaving runs empty, when font can draw the whole
+   * string - the common case, which needs no splitting */
+  bool GetFontRuns(const SkFont& font, const char* str, std::vector<FontRun>& runs) const;
+
+  /** A system typeface in font's style that has character c, or nullptr if there is none. Answers are remembered,
+   * so text redrawn every frame asks the OS once per new character */
+  sk_sp<SkTypeface> GetFallbackTypeface(const SkFont& font, SkUnichar c) const;
+
+  mutable std::vector<sk_sp<SkTypeface>> mFallbackTypefaces;
+  mutable std::unordered_set<SkUnichar> mCharsWithoutFallback;
+  WDL_String mTextLanguage;
 
   void PathTransformSetMatrix(const IMatrix& m) override;
   void SetClipRegion(const IRECT& r) override;

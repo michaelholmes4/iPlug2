@@ -139,6 +139,8 @@ public:
   
   void DrawMultiLineText(const IText& text, const char* str, const IRECT& bounds, const IBlend* pBlend) override;
 
+  void SetTextLanguage(const char* bcp47) override;
+
 protected:
     
   float DoMeasureText(const IText& text, const char* str, IRECT& bounds) const override;
@@ -172,6 +174,7 @@ private:
 
   mutable std::vector<sk_sp<SkTypeface>> mFallbackTypefaces;
   mutable std::unordered_set<SkUnichar> mCharsWithoutFallback;
+  WDL_String mTextLanguage;
 
   void PathTransformSetMatrix(const IMatrix& m) override;
   void SetClipRegion(const IRECT& r) override;

@@ -762,6 +762,13 @@ static SkUnichar NextUTF8Char(const char** pStr, const char* end)
   return c;
 }
 
+void IGraphicsSkia::SetTextLanguage(const char* bcp47)
+{
+  mTextLanguage.Set(bcp47 ? bcp47 : "");
+  mFallbackTypefaces.clear();
+  mCharsWithoutFallback.clear();
+}
+
 sk_sp<SkTypeface> IGraphicsSkia::GetFallbackTypeface(const SkFont& font, SkUnichar c) const
 {
   const SkFontStyle style = font.getTypeface() ? font.getTypeface()->fontStyle() : SkFontStyle();
@@ -775,7 +782,9 @@ sk_sp<SkTypeface> IGraphicsSkia::GetFallbackTypeface(const SkFont& font, SkUnich
   if (mCharsWithoutFallback.count(c))
     return nullptr;
 
-  sk_sp<SkTypeface> typeface = SkFontMgrRefDefault()->matchFamilyStyleCharacter(nullptr, style, nullptr, 0, c);
+  const char* languages[] = { mTextLanguage.Get() };
+  const int numLanguages = mTextLanguage.GetLength() ? 1 : 0;
+  sk_sp<SkTypeface> typeface = SkFontMgrRefDefault()->matchFamilyStyleCharacter(nullptr, style, languages, numLanguages, c);
 
   if (typeface && typeface->unicharToGlyph(c))
     mFallbackTypefaces.push_back(typeface);
@@ -1605,6 +1614,9 @@ void IGraphicsSkia::DrawMultiLineText(const IText& text, const char* str, const 
   
   textStyle.setFontFamilies({SkString(fontFamily)});
   textStyle.setFontSize(text.mSize * 0.9);
+
+  if (mTextLanguage.GetLength())
+    textStyle.setLocale(SkString(mTextLanguage.Get()));
   textStyle.setFontStyle(SkFontStyle(SkFontStyle::kNormal_Weight,
                                      SkFontStyle::kNormal_Width,
                                      SkFontStyle::kUpright_Slant));

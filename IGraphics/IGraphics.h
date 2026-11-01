@@ -521,6 +521,12 @@ public:
    * @return \c true on success */
   bool LoadFont(const char* fontID, const char* fontName, ETextStyle style);
 
+  /** Sets the language used to pick a system font for characters the loaded fonts lack. Some characters are drawn
+   * differently from one language to another (Han characters in Japanese and Chinese), so this gets the UI's
+   * language's forms. Backends without per-character font fallback ignore it
+   * @param bcp47 A BCP 47 language tag, such as "ja" or "zh-Hans"; empty for no preference */
+  virtual void SetTextLanguage(const char* bcp47) {}
+
 #pragma mark - Layer management
   
   /** Create an IGraphics layer. Switches drawing to an offscreen bitmap for drawing

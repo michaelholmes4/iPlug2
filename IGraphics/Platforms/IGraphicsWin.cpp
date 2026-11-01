@@ -228,7 +228,10 @@ LRESULT CALLBACK IGraphicsWin::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
     if (pGraphics->mVSYNCEnabled) // use VBLANK thread
     {
-      assert((pGraphics->FPS() == 60) && "If you want to run at frame rates other than 60FPS");
+      // The vblank thread paces frames at the display's refresh rate, so the
+      // requested FPS doesn't apply here. Not an error, just worth knowing.
+      if (pGraphics->FPS() != 60)
+        DBGMSG("IGraphicsWin: vsync enabled, so frames follow the display's refresh rate rather than the requested %i FPS\n", pGraphics->FPS());
       pGraphics->StartVBlankThread(hWnd);
     }
     else // use WM_TIMER -- its best to get below 16ms because the windows time quanta is slightly above 15ms.

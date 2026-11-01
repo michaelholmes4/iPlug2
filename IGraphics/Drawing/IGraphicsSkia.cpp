@@ -33,6 +33,7 @@
 #include "modules/skparagraph/include/ParagraphBuilder.h"
 #include "modules/skparagraph/include/ParagraphStyle.h"
 #include "modules/skparagraph/include/TextStyle.h"
+#include "modules/skparagraph/include/TypefaceFontProvider.h"
 #include "modules/skshaper/include/SkShaper.h"
 #include "modules/skunicode/include/SkUnicode_icu.h"
 #endif
@@ -372,6 +373,8 @@ IGraphicsSkia::IGraphicsSkia(IGEditorDelegate& dlg, int w, int h, int fps, float
   mFontCollection = sk_make_sp<skia::textlayout::FontCollection>();
   mFontCollection->enableFontFallback();
   mFontCollection->setDefaultFontManager(SkFontMgrRefDefault());
+  mParagraphFonts = sk_make_sp<skia::textlayout::TypefaceFontProvider>();
+  mFontCollection->setAssetFontManager(mParagraphFonts);
 #endif
 }
 
@@ -1612,14 +1615,31 @@ void IGraphicsSkia::DrawMultiLineText(const IText& text, const char* str, const 
     fontFamily = fontFamily.substr(0, pos);
   }
   
-  textStyle.setFontFamilies({SkString(fontFamily)});
-  textStyle.setFontSize(text.mSize * 0.9);
+  // The typeface and em size DrawText gives this IText (see PrepareAndMeasureText):
+  // mSize is the height of a line, ascender to descender, not the em
+  {
+    StaticStorage<Font>::Accessor storage(sFontCache);
+    Font* pFont = storage.Find(text.mFont);
+    if (pFont)
+    {
+      if (mParagraphFontNames.insert(text.mFont).second)
+        mParagraphFonts->registerTypeface(pFont->mTypeface, SkString(text.mFont));
+      textStyle.setFontFamilies({SkString(text.mFont)});
+      textStyle.setFontStyle(pFont->mTypeface->fontStyle());
+    }
+    else
+      textStyle.setFontFamilies({SkString(fontFamily)});
+
+    const double emRatio = pFont ? pFont->mData->GetHeightEMRatio() : 1.0;
+    textStyle.setFontSize(text.mSize * emRatio);
+    // Line height in ems, the extra leading split evenly above and below each line
+    textStyle.setHeight(text.mLineSpacing / emRatio);
+    textStyle.setHeightOverride(true);
+    textStyle.setHalfLeading(true);
+  }
 
   if (mTextLanguage.GetLength())
     textStyle.setLocale(SkString(mTextLanguage.Get()));
-  textStyle.setFontStyle(SkFontStyle(SkFontStyle::kNormal_Weight,
-                                     SkFontStyle::kNormal_Width,
-                                     SkFontStyle::kUpright_Slant));
   
   builder->pushStyle(textStyle);
   builder->addText(str);

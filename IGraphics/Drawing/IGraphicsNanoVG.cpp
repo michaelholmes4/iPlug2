@@ -1375,6 +1375,7 @@ void IGraphicsNanoVG::DrawMultiLineText(const IText& text, const char* str, cons
   nvgSave(mVG);
   nvgFontSize(mVG, text.mSize);
   nvgFontFace(mVG, text.mFont);
+  nvgTextLineHeight(mVG, text.mLineSpacing);
  
   float x = 0.0, y = 0.0;
   const float width = bounds.W();

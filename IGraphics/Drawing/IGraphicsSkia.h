@@ -28,6 +28,7 @@
 
 namespace skia::textlayout {
 class FontCollection;
+class TypefaceFontProvider;
 }
 
 BEGIN_IPLUG_NAMESPACE
@@ -199,6 +200,10 @@ private:
   
 #if !defined IGRAPHICS_NO_SKIA_SKPARAGRAPH
   sk_sp<skia::textlayout::FontCollection> mFontCollection;
+  // The loaded fonts DrawMultiLineText has used, each under its IText font name: the
+  // paragraph layout only sees system fonts otherwise
+  sk_sp<skia::textlayout::TypefaceFontProvider> mParagraphFonts;
+  std::unordered_set<std::string> mParagraphFontNames;
 #endif
   
 #ifdef IGRAPHICS_METAL

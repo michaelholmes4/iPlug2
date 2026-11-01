@@ -734,6 +734,7 @@ struct IText
   IText WithSize(float size) const { IText newText = *this; newText.mSize = size; return newText; }
   IText WithAngle(float v) const { IText newText = *this; newText.mAngle = v; return newText; }
   IText WithFont(const char* fontID) const { IText newText = *this; strcpy(newText.mFont, (fontID ? fontID : DEFAULT_FONT));; return newText; }
+  IText WithLineSpacing(float v) const { IText newText = *this; newText.mLineSpacing = v; return newText; }
   
   char mFont[FONT_LEN];
   float mSize;
@@ -743,6 +744,9 @@ struct IText
   float mAngle = 0.f; // Degrees ccwise from normal.
   EAlign mAlign = EAlign::Near;
   EVAlign mVAlign = EVAlign::Middle;
+  /** DrawMultiLineText's distance between baselines, as a multiple of mSize (which is
+   * already one line of the font, ascender to descender): 1 sets lines solid. */
+  float mLineSpacing = 1.f;
 };
 
 const IText DEFAULT_TEXT = IText();
